@@ -1,3 +1,7 @@
+---
+title: "C#的流传输文件和断点下载"
+---
+
 ```csharp
 using System.IO;
 using System.Net.Http;

@@ -1,3 +1,7 @@
+---
+title: "Vue中$refs的理解"
+---
+
 # Vue中$refs的理解
 `$refs`是一个对象，持有注册过`ref attribute`的所有`DOM`元素和组件实例。
 
