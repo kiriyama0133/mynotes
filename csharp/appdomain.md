@@ -1,0 +1,20 @@
+​	[AppDomain](https://zhida.zhihu.com/search?content_id=253181211&content_type=Article&match_order=1&q=AppDomain&zhida_source=entity)（应用程序域）是.NET框架中的一个重要概念，主要用于隔离、加载和执行托管代码。它提供了一种轻量级的进程内隔离机制，使得多个应用程序可以在同一个进程中运行而不互相干扰。以下是关于AppDomain的一些关键点：
+
+
+隔离性 AppDomain提供了应用程序级别的隔离。这意味着不同的AppDomain可以在同一个进程中运行，但它们有各自独立的内存空间和资源。这种隔离性提高了应用程序的安全性和稳定性。
+
+
+动态加载和卸载 AppDomain允许动态加载和卸载程序集。这对于需要在运行时加载插件或扩展的应用程序来说非常有用。通过创建新的AppDomain来加载程序集，当不再需要时，可以卸载整个AppDomain，从而释放资源。
+
+
+
+错误隔离 如果一个AppDomain中的代码发生未处理的异常或错误，通常不会影响同一进程中的其他AppDomain。这种错误隔离机制有助于提高应用程序的健壮性。
+
+
+安全性 通过使用AppDomain，可以在不同的安全上下文中运行代码。每个AppDomain可以有不同的安全策略和许可集，从而限制代码的操作范围，增强安全性。
+
+
+[跨域通信](https://zhida.zhihu.com/search?content_id=253181211&content_type=Article&match_order=1&q=跨域通信&zhida_source=entity) AppDomain之间的通信通常通过.NET的远程处理（Remoting）机制或者更现代的IPC（进程间通信）机制来实现。尽管在同一进程中，跨域通信的开销依然存在，因此需要谨慎设计和使用。
+
+
+生命周期管理 AppDomain的生命周期由其宿主（通常是进程或应用程序）管理。可以通过`AppDomain.CreateDomain`方法来创建新的应用程序域，通过`AppDomain.Unload`来卸载它们。
