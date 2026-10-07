@@ -13,6 +13,20 @@
             "state": {
               "type": "markdown",
               "state": {
+                "file": "platform/win32平台的异步和系统调用.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "win32平台的异步和系统调用"
+            }
+          },
+          {
+            "id": "c3c44efddf378f38",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
                 "file": "components/基于vueuse的扇形虚拟滚动容器.md",
                 "mode": "source",
                 "source": false
@@ -221,7 +235,11 @@
   },
   "active": "eacbb3631842917f",
   "lastOpenFiles": [
+    "rambling/碎碎念-计算性.md",
+    "platform/win32平台的异步和系统调用.md",
+    "platform",
     "components/基于vueuse的扇形虚拟滚动容器.md",
+    "rambling",
     "components/nuxt-content博客的一些个人思考.md",
     "compilers"
   ]
