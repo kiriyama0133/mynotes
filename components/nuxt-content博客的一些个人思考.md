@@ -129,21 +129,77 @@ nitro: {
 └── _payload.json
 ```
 
-index.html负责html，`_padload.js`  负责nuxt页面运行时需要恢复的payload/state。比如说这个payload里面已经有：
+index.html负责html，`_padload.js`  负责nuxt页面运行时需要恢复的payload/state。可以知道的是，这些内容都是SSG部署的时候在构建期完成的，每个预渲染路由由旁写出_payload.json。
 
-```
-page-/cpp/boost/编译python可调用的pyd-c模块
-       ↓
-Content Document
-       ↓
-title
-body
-description
-navigation
-path
-seo
-...
-```
+<svg viewBox="0 0 680 368" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>_payload.json 从构建期生成到客户端消费的链路</title>
+<desc>构建期每个预渲染路由旁写出 _payload.json；运行期点击链接时 router.beforeResolve 调用 loadPayload 拉取，命中则写入 nuxtApp.static.data，404 则回退到客户端真查询。</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<style>
+.bx{stroke-width:.5}
+.tt{font:500 14px var(--font-sans)}
+.sb{font:400 12px var(--font-sans)}
+</style>
+<rect class="bx" x="40" y="40" width="600" height="44" rx="12" fill="var(--color-background-secondary)" stroke="var(--color-border-tertiary)"/>
+<text class="tt" x="340" y="62" text-anchor="middle" dominant-baseline="central" fill="var(--color-text-primary)">构建期 · nuxi generate：每个预渲染路由旁写出 _payload.json</text>
+<path d="M340 84 L340 144" fill="none" stroke="var(--color-text-tertiary)" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="sb" x="352" y="116" dominant-baseline="central" fill="var(--color-text-tertiary)">与 index.html 同目录</text>
+<rect class="bx" x="40" y="144" width="600" height="56" rx="12" fill="#0C447C" stroke="#85B7EB"/>
+<text class="tt" x="340" y="166" text-anchor="middle" dominant-baseline="central" fill="#E6F1FB">运行期 · 客户端导航（点站内链接或悬停预取）</text>
+<text class="sb" x="340" y="184" text-anchor="middle" dominant-baseline="central" fill="#B5D4F4">router.beforeResolve → loadPayload(path) → fetch &lt;route&gt;/_payload.json?_b=buildId</text>
+<path d="M340 200 L340 232 M185 232 L495 232" fill="none" stroke="var(--color-text-tertiary)" stroke-width="1.5"/>
+<path d="M185 232 L185 264" fill="none" stroke="var(--color-text-tertiary)" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M495 232 L495 264" fill="none" stroke="var(--color-text-tertiary)" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="sb" x="178" y="250" text-anchor="end" dominant-baseline="central" fill="var(--color-text-tertiary)">200</text>
+<text class="sb" x="502" y="250" dominant-baseline="central" fill="var(--color-text-tertiary)">404</text>
+<rect class="bx" x="40" y="264" width="290" height="64" rx="12" fill="#0C447C" stroke="#85B7EB"/>
+<text class="tt" x="185" y="284" text-anchor="middle" dominant-baseline="central" fill="#E6F1FB">命中</text>
+<text class="sb" x="185" y="303" text-anchor="middle" dominant-baseline="central" fill="#B5D4F4">写入 nuxtApp.static.data</text>
+<text class="sb" x="185" y="319" text-anchor="middle" dominant-baseline="central" fill="#B5D4F4">useAsyncData 取缓存，零查询</text>
+<rect class="bx" x="350" y="264" width="290" height="64" rx="12" fill="#791F1F" stroke="#F09595"/>
+<text class="tt" x="495" y="284" text-anchor="middle" dominant-baseline="central" fill="#FCEBEB">缺失或过期</text>
+<text class="sb" x="495" y="303" text-anchor="middle" dominant-baseline="central" fill="#F7C1C1">回退到客户端真查询</text>
+<text class="sb" x="495" y="319" text-anchor="middle" dominant-baseline="central" fill="#F7C1C1">拉 WASM sqlite，慢且易失配</text>
+</svg>
+我们来看看Nuxt4.5.2中NuxtPayload类型的原样：
+
+<svg viewBox="0 0 680 410" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>_payload.json 的顶层字段构成</title>
+<desc>payload 顶层含 data、state、config、path、prerenderedAt、_errors、once 等字段，其中 data 承载 useAsyncData 与 useFetch 的返回值。</desc>
+<style>
+.bx{stroke-width:.5}
+.hd{font:500 14px ui-sans-serif,system-ui,sans-serif}
+.nm{font:500 12px ui-monospace,SFMono-Regular,Consolas,monospace}
+.ds{font:400 12px ui-sans-serif,system-ui,sans-serif}
+</style>
+<rect class="bx" x="40" y="40" width="600" height="350" rx="20" fill="#FFFFFF" stroke="#D3D1C7"/>
+<text class="hd" x="64" y="68" dominant-baseline="central" fill="#2C2C2A">_payload.json 顶层字段</text>
+<rect class="bx" x="64" y="84" width="552" height="34" rx="8" fill="#E6F1FB" stroke="#85B7EB"/>
+<text class="nm" x="80" y="101" dominant-baseline="central" fill="#0C447C">data</text>
+<text class="ds" x="210" y="101" dominant-baseline="central" fill="#185FA5">这一页的数据：useAsyncData / useFetch 的返回值</text>
+<rect class="bx" x="64" y="126" width="552" height="34" rx="8" fill="#F4F3F0" stroke="#DCDAD3"/>
+<text class="nm" x="80" y="143" dominant-baseline="central" fill="#2C2C2A">state</text>
+<text class="ds" x="210" y="143" dominant-baseline="central" fill="#5F5E5A">useState 的值，键名带 $s 前缀</text>
+<rect class="bx" x="64" y="168" width="552" height="34" rx="8" fill="#F4F3F0" stroke="#DCDAD3"/>
+<text class="nm" x="80" y="185" dominant-baseline="central" fill="#2C2C2A">config</text>
+<text class="ds" x="210" y="185" dominant-baseline="central" fill="#5F5E5A">runtimeConfig 的 public 部分</text>
+<rect class="bx" x="64" y="210" width="552" height="34" rx="8" fill="#F4F3F0" stroke="#DCDAD3"/>
+<text class="nm" x="80" y="227" dominant-baseline="central" fill="#2C2C2A">path</text>
+<text class="ds" x="210" y="227" dominant-baseline="central" fill="#5F5E5A">这份 payload 属于哪个路由</text>
+<rect class="bx" x="64" y="252" width="552" height="34" rx="8" fill="#F4F3F0" stroke="#DCDAD3"/>
+<text class="nm" x="80" y="269" dominant-baseline="central" fill="#2C2C2A">prerenderedAt</text>
+<text class="ds" x="210" y="269" dominant-baseline="central" fill="#5F5E5A">预渲染时间戳，搭档 serverRendered</text>
+<rect class="bx" x="64" y="294" width="552" height="34" rx="8" fill="#F4F3F0" stroke="#DCDAD3"/>
+<text class="nm" x="80" y="311" dominant-baseline="central" fill="#2C2C2A">_errors</text>
+<text class="ds" x="210" y="311" dominant-baseline="central" fill="#5F5E5A">每个 asyncData key 对应的错误对象</text>
+<rect class="bx" x="64" y="336" width="552" height="34" rx="8" fill="#F4F3F0" stroke="#DCDAD3"/>
+<text class="nm" x="80" y="353" dominant-baseline="central" fill="#2C2C2A">once</text>
+<text class="ds" x="210" y="353" dominant-baseline="central" fill="#5F5E5A">callOnce 用过的 key，防止重复执行</text>
+</svg>
 
 本身就包含了文章数据，构建阶段的queryCollection查询出来的结果就会被nuxt序列化进入该页面的payload，而不是浏览器通过查询再sqlite里查询。用户访问的时候GET请求去静态服务器里找_payload.json。拿到已经序列化的page来恢复数据。
 
@@ -162,6 +218,192 @@ Nuxt Content 的 `queryCollection()` 在浏览器端确实会直接走 SQLite WA
 官方明确把 v3 定位成 SQL-backed storage，并且声称同一套系统支持开发、静态生成、server、serverless、edge 等部署模式，因此我们再推论一下，数据层甚至是可以做到云服务上的，例如Cloudfalre D1，本质上就是把 Content 的数据层放到了 Cloudflare 的数据库服务上。
 
 至于SSR下的具体表现，我确实还没有尝试过，因此先不写了。
+
+## mermaid策略
+
+原先我并不能很好的处理Mermaid，原先会直接变成代码块渲染出来，为了解决这个，我采用了覆写组件，使用ProsePre组件，当language === 'mermaid' 的时候，交给新的MermaidBlock.vue，其余语言走默认渲染，默认实现就是一行 
+
+```html
+<pre :class><slot /></pre>
+```
+
+高亮在解析阶段已经完成，所以覆写零成本。这两个组件大致为：
+
+```vue
+<!--
+  ProsePre 覆写（@nuxtjs/mdc 的默认实现就是 <pre :class><slot /></pre>，
+  高亮在 AST 阶段已经完成，slot 里就是高亮后的节点）：
+  - ```mermaid 代码块 → MermaidBlock，客户端渲染成 SVG
+  - 其余语言 → 和默认实现完全一致
+-->
+<script setup lang="ts">
+defineProps<{
+  code?: string
+  language?: string
+  filename?: string
+  highlights?: number[]
+  meta?: string
+  class?: string
+}>()
+</script>
+
+<template>
+  <MermaidBlock v-if="language === 'mermaid'" :code="code ?? ''" />
+  <pre v-else :class="$props.class"><slot /></pre>
+</template>
+
+```
+
+```vue
+<!--
+  MermaidBlock —— 把 ```mermaid 代码块渲染成 SVG。
+-->
+<script setup lang="ts">
+import { onMounted, ref, watch } from 'vue'
+import { useTheme } from '~/composables/useTheme'
+
+const props = defineProps<{ code: string }>()
+
+const { isDark } = useTheme()
+const el = ref<HTMLElement | null>(null)
+const failed = ref(false)
+
+type Mermaid = typeof import('mermaid').default
+let mermaid: Mermaid | null = null
+let seq = 0
+
+async function render() {
+  const target = el.value
+  if (!target || !props.code.trim()) return
+  try {
+    mermaid ??= (await import('mermaid')).default
+    // 主题跟着全站明暗走；每次 initialize 都生效于下一次 render
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: isDark.value ? 'dark' : 'default'
+    })
+    // render 要求全局唯一 id（会往 body 塞同名隐藏元素）
+    const { svg } = await mermaid.render(`mermaid-${++seq}`, props.code)
+    target.innerHTML = svg
+    failed.value = false
+  } catch (error) {
+    // 语法错误等：别把整页弄崩，回退显示源码
+    failed.value = true
+    console.warn('[mermaid] 渲染失败', error)
+  }
+}
+
+onMounted(render)
+// 切换明暗后重画（mermaid 的主题是渲染期定死的，不是 CSS 变量）
+watch(isDark, render)
+</script>
+
+<template>
+  <pre v-if="failed" class="mermaid-fallback"><code>{{ code }}</code></pre>
+  <div v-else ref="el" class="mermaid" />
+</template>
+
+```
+
+你只要给组件取名叫做ProsePre，那么这个组件是自动引用的，不需要手动导入，或者注册它。Nuxt Content和Nuxt UI的机制是自动映射，而不是自动导入，你在markdown文件里写下一个代码块，mdc解析器会把他解析为一个pre标签，然后nuxt content会自动将这个pre标签替换为对应的ProsePre组件，这个替换过程发生在底层，因此你在项目源码中不会看到 `import ProsePre from ...` 或显式的组件调用。
+
+上面的接受的props就是一般我们使用的属性，这样可以根据语言来决定渲染方式，其他语言可以退回到pre结构。code是代码字符串，language是代码块语言比如js、mermaid。filename是文件名，如果有[filename]语法。highlights是高亮行号，meta是代码块元信息，class是默认类名。
+
+> 高亮在 AST 阶段已经完成，slot 里就是高亮后的节点，`@nuxtjs/mdc` 在解析阶段就会把代码高亮成 `<span>` 节点，`ProsePre` 的 `slot` 就是这些高亮后的内容。
+
+并且这里mermiadblock组件还设置了回退机制，如果失败了，就会回退为普通代码块。
+
+## 代码高亮
+
+「shiki」这个名字确实来自日语——**式**（しき），就是「样式、形式」的意思。作者 Pine Wu 把 VSCode 编辑器里那套语法高亮引擎抽出来做成了独立库，名字取的就是「样式」；现在主要由 Anthony Fu 维护，Nuxt Content 的 mdc 底层用的就是它。
+
+**shiki 不是编译器，它不解析代码**。整条链路是这样的：
+
+<svg width="100%" viewBox="0 0 680 402" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Shiki 的语法高亮流水线</title>
+  <desc>源代码依次经过 TextMate 正则分词、scope 标注、主题配色映射，最后输出带 CSS 变量的 HTML 结构</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="40" y="40" width="600" height="54" rx="12" fill="#2F2F42" stroke="#6E6E93" stroke-width="0.5"/>
+  <text x="64" y="61" font-family="var(--font-sans, sans-serif)" font-size="14" font-weight="500" fill="#E8E8F4" dominant-baseline="central">① 输入：一段代码 + 一个语言名</text>
+  <text x="64" y="80" font-family="var(--font-sans, sans-serif)" font-size="12" fill="#A9A9C2" dominant-baseline="central">```cpp … 就是一串纯文本，没有任何结构信息</text>
+
+  <line x1="340" y1="94" x2="340" y2="132" stroke="#8E8EA8" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="136" width="600" height="54" rx="12" fill="#3C3489" stroke="#7F77DD" stroke-width="0.5"/>
+  <text x="64" y="157" font-family="var(--font-sans, sans-serif)" font-size="14" font-weight="500" fill="#CECBF6" dominant-baseline="central">② TextMate 语法分词：正则状态机</text>
+  <text x="64" y="176" font-family="var(--font-sans, sans-serif)" font-size="12" fill="#AFA9EC" dominant-baseline="central">逐字符推进，切出 token（字符区间），给每个 token 贴 scope 名</text>
+
+  <line x1="340" y1="190" x2="340" y2="228" stroke="#8E8EA8" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="232" width="600" height="54" rx="12" fill="#3C3489" stroke="#7F77DD" stroke-width="0.5"/>
+  <text x="64" y="253" font-family="var(--font-sans, sans-serif)" font-size="14" font-weight="500" fill="#CECBF6" dominant-baseline="central">③ 主题映射：scope 名 → 颜色</text>
+  <text x="64" y="272" font-family="var(--font-sans, sans-serif)" font-size="12" fill="#AFA9EC" dominant-baseline="central">查 VSCode 主题的 tokenColors，同一个 token 同时算出两套色值</text>
+
+  <line x1="340" y1="286" x2="340" y2="324" stroke="#8E8EA8" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="328" width="600" height="54" rx="12" fill="#0F4C3E" stroke="#5DCAA5" stroke-width="0.5"/>
+  <text x="64" y="349" font-family="var(--font-sans, sans-serif)" font-size="14" font-weight="500" fill="#9FE1CB" dominant-baseline="central">④ 输出 HTML：嵌套 span + CSS 变量</text>
+  <text x="64" y="368" font-family="var(--font-sans, sans-serif)" font-size="12" fill="#5DCAA5" dominant-baseline="central">构建期算完写进 HTML，浏览器运行时不做任何高亮计算</text>
+</svg>
+
+关键是第 ② 步：**它靠的是 VSCode 那套 TextMate 语法**——一个从 `.tmLanguage.json` 加载进来的正则状态机。它从头到尾扫一遍字符串，用一堆正则去匹配「这里像关键字」「这里像字符串」，匹配上就切出一个 token 并贴个标签（scope）。比如笔记里的 `const int x = 42;` 会被切成：
+
+- `const` → `storage.type.cpp`
+- `int` → `storage.type.primitive.cpp`
+- `x` → `variable.other.cpp`
+- `42` → `constant.numeric.cpp`
+
+这也是为什么 VSCode 里 `// int` 这种注释里的关键字不会上色（注释规则优先级更高），但把变量命名成 `int` 就可能被误判——没有 AST、没有类型检查，纯正则博弈。好处是快、对残缺代码也宽容，而且**任何语言只要有一份语法文件就能支持**，这也是它语言覆盖那么广的原因。
+
+<svg width="100%" viewBox="0 0 680 344" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Shiki 双主题：一份 HTML 携带两套颜色</title>
+  <desc>同一个 token 同时输出浅色与暗色两个 CSS 变量，切换主题时只改一个 class，颜色由 CSS 规则翻</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="34" font-family="var(--font-sans, sans-serif)" font-size="12" fill="#9A9AB4" dominant-baseline="central">github-light 的色值</text>
+  <rect x="40" y="44" width="600" height="44" rx="8" fill="#FFFFFF" stroke="#D0D0D8" stroke-width="0.5"/>
+  <text x="64" y="67" font-family="var(--font-mono, monospace)" font-size="13" dominant-baseline="central">
+    <tspan x="64" fill="#D73A49">const</tspan>
+    <tspan x="108" fill="#005CC5">int</tspan>
+    <tspan x="140" fill="#24292E">x = 42;</tspan>
+  </text>
+
+  <text x="40" y="102" font-family="var(--font-sans, sans-serif)" font-size="12" fill="#9A9AB4" dominant-baseline="central">github-dark 的色值</text>
+  <rect x="40" y="112" width="600" height="44" rx="8" fill="#0D1117" stroke="#3A3A4A" stroke-width="0.5"/>
+  <text x="64" y="135" font-family="var(--font-mono, monospace)" font-size="13" dominant-baseline="central">
+    <tspan x="64" fill="#F97583">const</tspan>
+    <tspan x="108" fill="#79B8FF">int</tspan>
+    <tspan x="140" fill="#E1E4E8">x = 42;</tspan>
+  </text>
+
+  <line x1="340" y1="156" x2="340" y2="180" stroke="#8E8EA8" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="184" width="600" height="74" rx="12" fill="#23233A" stroke="#6E6E93" stroke-width="0.5"/>
+  <text x="64" y="208" font-family="var(--font-mono, monospace)" font-size="12" fill="#9FE1CB" dominant-baseline="central">&lt;span class="sJ8bj"&gt;const&lt;/span&gt;</text>
+  <text x="64" y="234" font-family="var(--font-mono, monospace)" font-size="12" fill="#A9A9C2" dominant-baseline="central">.sJ8bj { --shiki-default: #D73A49; --shiki-dark: #F97583 }</text>
+
+  <line x1="340" y1="258" x2="340" y2="282" stroke="#8E8EA8" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="40" y="286" width="600" height="58" rx="12" fill="#3C3489" stroke="#7F77DD" stroke-width="0.5"/>
+  <text x="64" y="307" font-family="var(--font-mono, monospace)" font-size="12" fill="#CECBF6" dominant-baseline="central">html.dark .shiki span { color: var(--shiki-dark) }</text>
+  <text x="64" y="328" font-family="var(--font-sans, sans-serif)" font-size="12" fill="#AFA9EC" dominant-baseline="central">切主题只是换掉 html 上的一个 class，颜色由 CSS 翻，不重新高亮</text>
+</svg>
+
+第 ③ 步还有个细节值得单说：**同一个 token 会同时算出两套色值**，写进 CSS 变量，而不是生成两份 HTML。所以切明暗时不需要重新高亮——只是 `html` 上的 class 变了，CSS 变量跟着翻。这也是为什么当初把开关定成 `<html>.dark` 这个类名：mdc 生成的规则硬编码了 `html.dark .shiki span`，两边必须对齐。
+
+shiki 最早用 Oniguruma（一个 C 写的正则引擎，编译成 WASM 跑在浏览器里），但 mdc 现在默认换成了 JS 原生正则引擎。
+
+在我们这个项目里，shiki **不在浏览器里跑**。Nuxt Content 构建时解析 md，mdc 就在那一刻调用 shiki 把代码块变成 HTML，直接写进页面和 payload。所以你线上页面打开时代码已经是彩色的，客户端零成本——这也是为什么当初配错 `highlight: false` 就"静默无高亮"：构建期悄悄跳过了，运行期没有任何补救机制。（mdc 另外留了条 `/api/_mdc/highlight` 兜底路由，只在客户端动态高亮时用得上，我们这种 SSG 场景用不到。）
 
 
 
