@@ -340,5 +340,30 @@ ws客户端的文本帧字节可能长这样：
 
 这个和 SSE 的差别一眼就能看出来：**SSE 是一行行文本，WS 是一串字节**。帧头就两个字节，拆开看全是位域。
 
-继续更新。。。
+然后我们来说说实战中ws会话的维护吧，连接得放哪条线程上？SignalR、socket.io 的客户端都能跑在 Worker 里，也默认可跑在主线程——Worker 不是库的特性，是你自己选的运行位置。我们主流上认为主线程是默认的，比如socket.io中的io()还是vueuse的useWebsocket、SignalR的new HubConnectionBuilder()。Worker只有具体理由的时候才会上，而worker有实打实的代价，真正算得上值得上的只有一种情况，那就是需要 跨标签页共享一条连接的时候，那个时候我们可能需要的是SharedWorker，而不是Dedicated Worker。
+
+>SharedWorker是Web Worker的一种，区别在于它支持多个浏览上下文，读个标签页和iframe，共享同一个worker实例
+
+SharedWorker 的通信需要先获取 `port`，再通过它收发消息：
+
+```ts
+const myWorker = new SharedWorker("worker.js");
+myWorker.port.start(); // 手动启动端口
+myWorker.port.postMessage([1, 2]);
+myWorker.port.onmessage = (e) => console.log(e.data);
+
+// 在 Worker 内部，通过 `onconnect` 事件获取连接的端口，然后监听消息
+self.onconnect = (e) => {
+  const port = e.ports[0];
+  port.onmessage = (event) => {
+    port.postMessage(event.data[0] * event.data[1]);
+  };
+};
+```
+
+为什么我说还是主线程是默认呢，因为 `postMessage` 是结构化克隆，每条消息跨线程深拷贝一遍（除非用 Transferable / SharedArrayBuffer）。所以"放进 Worker"并不天然更快——消息量大、载荷小的时候，拷贝成本可能比解析成本还高。Worker 收到 → `postMessage` → 主线程派发，比主线程直接收多一个 tick。对超低延迟（撮合、行情）反而是负担。
+
+具体的我放专项的文档里再说吧，毕竟本章讲解的是TCP协议。
+
+
 
