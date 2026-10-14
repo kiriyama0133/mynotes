@@ -6,7 +6,7 @@ tags:
 ---
 这里整理的是html相关技术的笔记，面试可能会考到，所以这里便积累了一些
 
-### Src 和 href 的区别
+## Src 和 href 的区别
 
 src是替换当前元素，href是建立关联，src会把外部资源嵌入到当前的元素的位置，替换掉这个元素，它的加载行为：浏览器会阻塞解析，等资源下载完再继续，因为资源是当前文档的一部分，必须等到位。
 
@@ -20,7 +20,7 @@ src是替换当前元素，href是建立关联，src会把外部资源嵌入到�
 
 href作用是**建立当前文档和尾部资源的关联**，不会替换元素本身，加载行为：浏览器不阻塞解析，并行下载，资源是关联，非当前文档一部分。
 
-### iframe标签的优缺点
+## iframe标签的优缺点
 
 这个标签作用是创建一块独立的文档区域，有自己的DOM、js上下文（不同全局对象），css作用域，cookie和存储。
 
@@ -65,7 +65,7 @@ window.addEventListener('message', (e) => {
 })
 ```
 
-### Canvas和SVG
+## Canvas和SVG
 
 canvas是位图，svg是矢量图，canvas是立即模式渲染，逐像素绘制，svg是保留模式绘制，DOM节点描述。canvas本质是像素数组，svg本质是dom树。
 
@@ -90,7 +90,7 @@ const waMemory = waInstance.exports.memory;
 const u8Heap = new Uint8Array(waMemory.buffer);
 ```
 
-### TypeScript的DOM类型定义
+## TypeScript的DOM类型定义
 
 ts中的dom类型定义里，Element继承链是EventTarget-> Node-> element，
 ```ts
@@ -123,7 +123,7 @@ Element提供了`id`、`className`、`tagName`、`attributes`、`querySelector`�
 **`HTMLElement`** 提供了 `style`、`dataset`、`offsetWidth`、`click()`、`focus()`、`hidden`，让DOM组件可以控制样式，读写data属性，测量尺寸，触发交互、控制可见性。
 
 
-### 虚拟列表
+## 虚拟列表
 
 这是一种前端优化的性能技术，用于高效渲染超长列表，和WPF的虚拟滚动是一种意思，**只渲染视口内可见的列表项，而不是一次性渲染全部数据**。
 
@@ -252,3 +252,43 @@ onBeforeUnmount(() => {
 }
 </style>
 ```
+
+## 首屏防闪
+
+在样式生效前把 .dark 挂到 `<html>` 上就可以防止首次加载的时候闪烁，这个我们在nuxt.config.ts里可能能够看得到相关配置：
+
+```ts
+  app: {
+    head: {
+      script: [
+        {
+          // 首屏防闪：在样式生效前把 .dark 挂到 <html> 上。
+          innerHTML:
+            "(function(){try{var s=localStorage.getItem('blog-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark')}catch(e){}})()",
+          tagPosition: 'head' as const
+        }
+      ]
+    }
+  },
+```
+
+问题核心就是防止页面在暗色模式初始化前就先闪一下亮色背景，在切换成暗色。浏览器的渲染顺序是1先解析HTML，构建DOM；2加载并解析CSS，构建CSSOM；3渲染出第一帧；4加载并执行Javascript。js通常在第4步才执行，如果暗色模式判断逻辑是第4步的话，比如说读取localstorage，然后给html加.dark类，那么就可能发生闪烁。
+
+这时候我们会在head里内联一段阻塞脚本，把判断逻辑提前到第一帧渲染之前执行。上面的代码干的就是这件事：
+
+```html
+<head>
+  <script>
+    // 在 CSS 渲染前执行，直接给 <html> 加 .dark
+    (function () {
+      const theme = localStorage.getItem('theme');
+      if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+  <!-- 之后才是样式表 -->
+</head>
+```
+
+
