@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "cpp/GLFW窗口.md",
+                "file": "css/gsap.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "GLFW窗口"
+              "title": "gsap"
             }
           }
         ]
@@ -99,7 +99,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "cpp/GLFW窗口.md",
+                "file": "css/gsap.md",
                 "collapseAll": true,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -118,7 +118,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "cpp/GLFW窗口.md",
+                "file": "css/gsap.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -161,7 +161,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "cpp/GLFW窗口.md",
+                "file": "css/gsap.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -221,6 +221,12 @@
   },
   "active": "eacbb3631842917f",
   "lastOpenFiles": [
+    "graphy/SDL3.md",
+    "css/gsap.md",
+    "graphy/GLFW窗口.md",
+    "media/WMF完成高性能的音频处理.md",
+    "graphy",
+    "media",
     "vue/emit讲解.md",
     "components/基于vueuse的扇形虚拟滚动容器.md",
     "vue/eslint.md",

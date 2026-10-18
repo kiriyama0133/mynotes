@@ -1,3 +1,10 @@
+---
+date: 2026-10-17
+tags:
+  - media
+  - wmf
+  - cpp
+---
 
 在 Windows 平台上，**Media Foundation（常口头叫 WMF/MF）** 是比 FFmpeg 更「原生」的一套管线：系统 DLL + 可选显卡驱动的 MFT（Media Foundation Transform）。你可以用 **`IMFSinkWriter`** 把视频轨、音频轨mux进 MP4。
 
