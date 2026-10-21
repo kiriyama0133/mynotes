@@ -102,17 +102,17 @@ SDL 的全部工作就是「把平台差异挡在下面，给你一套统一函�
 
 **几块正式模块**（对应 `include/SDL3/` 下的头文件）：
 
-|组|头文件|干什么|
-|---|---|---|
-|视频|`SDL_video.h`|窗口、显示器、HiDPI、全屏、OpenGL/Vulkan/Metal/D3D 上下文|
-|渲染|`SDL_render.h`|2D 绘制：纹理、矩形、线段、旋转、裁剪|
-|GPU|`SDL_gpu.h`|**新增**。跨后端 3D/计算，一套 API 跑 Vulkan / Metal / D3D12 / WebGPU|
-|事件|`SDL_events.h`|事件队列，是**所有输入的入口**|
-|输入|`SDL_keyboard.h` / `SDL_mouse.h` / `SDL_gamepad.h` / `SDL_joystick.h` / `SDL_pen.h` / `SDL_sensor.h`|键鼠、手柄（统一映射）、压感笔、陀螺仪|
-|音频|`SDL_audio.h`|设备枚举 + `SDL_AudioStream`（播放/录音流）|
-|线程|`SDL_thread.h`|线程、互斥量、信号量、原子操作|
-|IO|`SDL_iostream.h` / `SDL_filesystem.h` / `SDL_asyncio.h`|替代 stdio 的统一读写；异步 IO 是新增|
-|系统|`SDL_timer.h` / `SDL_properties.h` / `SDL_log.h` / `SDL_dialog.h` / `SDL_camera.h`|计时、属性系统、日志、文件对话框、摄像头（新增）|
+| 组   | 头文件                                                                                                  | 干什么                                                       |
+| --- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 视频  | `SDL_video.h`                                                                                        | 窗口、显示器、HiDPI、全屏、OpenGL/Vulkan/Metal/D3D 上下文               |
+| 渲染  | `SDL_render.h`                                                                                       | 2D 绘制：纹理、矩形、线段、旋转、裁剪                                      |
+| GPU | `SDL_gpu.h`                                                                                          | **新增**。跨后端 3D/计算，一套 API 跑 Vulkan / Metal / D3D12 / WebGPU |
+| 事件  | `SDL_events.h`                                                                                       | 事件队列，是**所有输入的入口**                                         |
+| 输入  | `SDL_keyboard.h` / `SDL_mouse.h` / `SDL_gamepad.h` / `SDL_joystick.h` / `SDL_pen.h` / `SDL_sensor.h` | 键鼠、手柄（统一映射）、压感笔、陀螺仪                                       |
+| 音频  | `SDL_audio.h`                                                                                        | 设备枚举 + `SDL_AudioStream`（播放/录音流）                          |
+| 线程  | `SDL_thread.h`                                                                                       | 线程、互斥量、信号量、原子操作                                           |
+| IO  | `SDL_iostream.h` / `SDL_filesystem.h` / `SDL_asyncio.h`                                              | 替代 stdio 的统一读写；异步 IO 是新增                                  |
+| 系统  | `SDL_timer.h` / `SDL_properties.h` / `SDL_log.h` / `SDL_dialog.h` / `SDL_camera.h`                   | 计时、属性系统、日志、文件对话框、摄像头（新增）                                  |
 
 还有一批「冷门但真能用」的：`SDL_messagebox.h`（原生弹窗）、`SDL_clipboard.h`、`SDL_tray.h`（托盘图标，新增）、`SDL_power.h`（电量）、`SDL_locale.h`、`SDL_process.h`
 

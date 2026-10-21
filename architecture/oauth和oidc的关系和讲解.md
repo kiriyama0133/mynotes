@@ -1,5 +1,5 @@
 ---
-date: 2026-12-10
+date: 2026-10-01
 tags:
   - architecture
   - oauth
