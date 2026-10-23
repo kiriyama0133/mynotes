@@ -406,5 +406,378 @@ shiki 最早用 Oniguruma（一个 C 写的正则引擎，编译成 WASM 跑在�
 在我们这个项目里，shiki **不在浏览器里跑**。Nuxt Content 构建时解析 md，mdc 就在那一刻调用 shiki 把代码块变成 HTML，直接写进页面和 payload。所以你线上页面打开时代码已经是彩色的，客户端零成本——这也是为什么当初配错 `highlight: false` 就"静默无高亮"：构建期悄悄跳过了，运行期没有任何补救机制。（mdc 另外留了条 `/api/_mdc/highlight` 兜底路由，只在客户端动态高亮时用得上，我们这种 SSG 场景用不到。）
 
 
+## monaco ide
 
 
+浏览器里的网页编辑器不只是做的正则词法高亮，monaco editor是直接从vs code源码中抽离出来的核心编辑器内核，之所以可以在浏览器里对ts、js、html、css提供真正的类型推导和智能补全，是因为底层依赖了三个部分：
+
+它内置的真正的编译器和language service，并且运行在web worker，对于ts/js，monaco内置了完整的tsserver/typescript compiler api 。当你在编译器里编写`const nums = [1, 2, 3]` 此类语句的时候，后台的ts worker会真正将代码解析为AST，运行type chcker类型检查器，推导nums的类型是`number[]`。
+
+然后把 `Array<number>`上的所有方法（map、filter、reduce 等）连同泛型替换后的函数签名（如 `(value: number,index: number, array: number[]) => U`）通过消息通信返回给主线程的补全弹窗。并且JavaScript也是可以享受到类型提醒的，因为Monaco中，js和ts共用一个TypeScript Language Service，也就是vs code里的 salsa引擎，js代码同样由ts编译器在后台做类型推断。对于html/css，同样也内置了vscode-html-languateservice和vscode-css-languageservice，内置了全套w3c标准标签规范，属性枚举值和css属性签名数据库。
+
+写 document.getElementById、window.addEventListener、Promise.all 或者 Math.max 时 Monaco 知道它们的参数类型和返回值。monaco的ts语言包里，内置打包了整套标准库类型定义的等同于本地开发的lib.esnext.d.ts+lib.dom.d.ts，转换成了内存字符串内嵌在了包里。
+
+当 ensureMonacoLoaded 将 target 设为 ScriptTarget.ESNext 时，TS Worker 会自动将这些内置的 .d.ts 声明加载到全局作用域中。因此所有浏览器 DOM API 和 ES 标准库API 都有完整的类型定义和 JSDoc 注释文档
+
+编辑器实例配置：
+
+我们可以全部集中在PlaygroundDialog.client.vue中看，在monaco.editor.create(container, optioins)时候传入，控制ui、排版和交互行为。
+
+Monaco支持布局自适应、小地图、代码折叠、括号配对高亮、多光标、字号/行高/字体、内敛颜色选择器。只读模式、行号样式、滚动条与光标动画等上百行配置：
+
+
+```ts
+async function ensureMonacoLoaded(): Promise<MonacoModule> {
+  if (monacoMod) return monacoMod
+
+  editorLoading.value = true
+  try {
+    const monaco = await import('monaco-editor')
+
+    if (!themesDefined) {
+      monaco.editor.defineTheme('kiriyama-light', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': '#f6f8fa',
+          'editorGutter.background': '#f6f8fa',
+          'editor.lineHighlightBackground': '#f0f0fe90',
+          'editorLineNumber.foreground': '#6e6e70',
+          'editorLineNumber.activeForeground': '#212122',
+          'editor.selectionBackground': '#d6d8b799',
+          'editorOverviewRuler.border': '#00000000'
+        }
+      })
+
+      monaco.editor.defineTheme('kiriyama-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': '#1f1f29',
+          'editorGutter.background': '#1f1f29',
+          'editor.lineHighlightBackground': '#24242f90',
+          'editorLineNumber.foreground': '#9b9ba8',
+          'editorLineNumber.activeForeground': '#fdfdf7',
+          'editor.selectionBackground': '#34372acc',
+          'editorOverviewRuler.border': '#00000000'
+        }
+      })
+
+      const tsNs = monaco.typescript ?? monaco.languages?.typescript
+      if (tsNs) {
+        tsNs.typescriptDefaults.setCompilerOptions({
+          target: tsNs.ScriptTarget.ESNext,
+          module: tsNs.ModuleKind.ESNext,
+          moduleResolution: tsNs.ModuleResolutionKind.NodeJs,
+          allowNonTsExtensions: true,
+          strict: true,
+          noEmit: false
+        })
+        tsNs.typescriptDefaults.setDiagnosticsOptions({
+          noSemanticValidation: false,
+          noSyntaxValidation: false
+        })
+      }
+
+      registerCSharpIntelliSense(monaco)
+      registerCppIntelliSense(monaco)
+
+      themesDefined = true
+    }
+
+    monacoMod = monaco
+    return monaco
+  } finally {
+    editorLoading.value = false
+  }
+}
+```
+
+这里就是monaco的配置，model: targetModel：绑定当前语言的虚拟文档模型（ITextModel）。theme: isDark.value ? 'kiriyama-dark' : 'kiriyama-light'：绑定自定义明暗主题；automaticLayout: true：关键项，内部通过 ResizeObserver监听容器宽高变化自动重排画布（适配响应式弹窗与 Web 标签栏显隐）。colorDecorators: true：开启 CSS 内联取色器，在 CSS 里写 `#4f46e5` 或 rgb(...)时直接渲染可点击的调色板色块。
+
+minimap: { enabled: false }：关闭右侧代码缩略图，给分栏弹窗留出更多编码空间，overviewRulerBorder: false & overviewRulerLanes: 0：隐藏右侧滚动条标尺边框，视觉更干净。
+
+我们通过 monaco.languages.typescript.typescriptDefaults（以及 javascriptDefaults /cssDefaults / htmlDefaults）配置后台语言服务的行为。
+
+我们项目的实际配置（L539-L553）：
+
+```ts
+    tsNs.typescriptDefaults.setCompilerOptions({
+      target: tsNs.ScriptTarget.ESNext,
+      module: tsNs.ModuleKind.ESNext,
+      moduleResolution: tsNs.ModuleResolutionKind.NodeJs,
+      allowNonTsExtensions: true,
+      strict: true, // 开启严格类型检查
+      noEmit: false
+    })
+    tsNs.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: false, // 开启语义类型报错
+      noSyntaxValidation: false    // 开启语法错误报错
+    })
+```
+
+然后是关于沙箱执行环境的问题，项目里我们一共有两套完全独立的web worker，一套是monaco，自动帮我们调用的，负责编写代码时的智能提示，另一个是我们自己实现的，用于实现运行时的代码执行的沙箱环境。
+
+当我们的代码执行 monaco.editor.createModel(value, 'typescript', uri)时，Monaco 的 languages.onLanguage("typescript", ...) 被触发，它内部自动调用 new Worker(new URL('ts.worker.js', import.meta.url), { type: 'module' })（同理还有 html.worker.js、css.worker.js、editor.worker.js）
+
+```ts
+function createFreshCodeModel(
+  monaco: MonacoModule,
+  value: string,
+  lang: Exclude<PlaygroundLanguage, 'html'>
+): MonacoTextModel {
+  const ext = LANG_EXT_MAP[lang] ?? 'ts'
+  const uri = monaco.Uri.parse(`inmemory://playground/snippet-${++modelSeq}.${ext}`)
+  return monaco.editor.createModel(value, lang, uri)
+}
+
+function ensureWebModels(monaco: MonacoModule) {
+  const tabs: Array<{ tab: WebTab; ext: string }> = [
+    { tab: 'html', ext: 'html' },
+    { tab: 'css', ext: 'css' },
+    { tab: 'javascript', ext: 'js' }
+  ]
+  for (const { tab, ext } of tabs) {
+    if (!webModels[tab] || webModels[tab]!.isDisposed()) {
+      const uri = monaco.Uri.parse(`inmemory://playground/web-${++modelSeq}.${ext}`)
+      webModels[tab] = monaco.editor.createModel(webFiles.value[tab], tab, uri)
+    } else if (webModels[tab]!.getValue() !== webFiles.value[tab]) {
+      webModels[tab]!.setValue(webFiles.value[tab])
+    }
+  }
+}
+```
+
+Monaco 的 Worker 只负责静态分析代码（提示和报错），绝对不会帮你执行代码。为了安全地运行用户在 Playground 里写的 TS / JS 代码，我们在 code-runner.ts:471-588的 executeJsInWorker 函数中自己手写了一套基于 Blob 的动态 Web Worker 沙箱。
+
+这里URI是monaco editor用来唯一标识一个文本模型ITextModel的地址，不是真实存在的网络资源。`monaco.Uri.parse(...)` 只是把一个字符串解析成 Monaco 内部的 URI 对象，`inmemory://` 是自定义 scheme，表示“这个模型只存在于内存里，不对应任何真实文件”。
+
+我们通过这种方式，在monaco的内存虚拟文件系统中，给当前这段代码分配一个带真实后缀名如.ts .js .css的虚拟文件路径。
+
+编译器tsserver内部维护者一颗虚拟项目文件数，它非常依赖文件名后缀.ts .d.ts .js .tsx 来决定启用哪套语法解析规则和类型检查策略。如果调用 monaco.editor.createModel(value, 'typescript') 时不传第 3 个参数uri，Monaco 会自动生成一个形如 inmemory://model/1（没有 .ts 后缀）的默认URI。虽然我们已经开启了 allowNonTsExtensions: true 兜底，但显式赋予 .ts / .js / .css/ .html 扩展名（如 inmemory://playground/snippet-1.ts），能让对应的 Language Service以最标准的方式识别文件类型并挂载内置的 lib.esnext.d.ts / lib.dom.d.ts类型声明。
+
+
+```ts
+/**
+ * 在隔离的 Web Worker 中执行 JS 代码，拦截 console 输出并防止死循环卡死主线程
+ */
+function executeJsInWorker(jsCode: string, timeoutMs = 5000): Promise<RunResult> {
+  return new Promise((resolve) => {
+    const startTime = performance.now()
+    const entries: ConsoleEntry[] = []
+
+    const workerSource = `
+      const formatValue = (val, seen = new WeakSet()) => {
+        if (val === undefined) return 'undefined';
+        if (val === null) return 'null';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'number' || typeof val === 'boolean' || typeof val === 'bigint') return String(val);
+        if (typeof val === 'symbol') return val.toString();
+        if (typeof val === 'function') return '[Function: ' + (val.name || 'anonymous') + ']';
+        if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+        if (typeof val === 'object') {
+          if (seen.has(val)) return '[Circular]';
+          seen.add(val);
+          try {
+            return JSON.stringify(val, (k, v) => {
+              if (typeof v === 'bigint') return v.toString() + 'n';
+              if (typeof v === 'function') return '[Function: ' + (v.name || 'anonymous') + ']';
+              if (v === undefined) return 'undefined';
+              return v;
+            }, 2);
+          } catch {
+            return Object.prototype.toString.call(val);
+          }
+        }
+        return String(val);
+      };
+
+      const sendLog = (level, args) => {
+        const text = args.map((a) => formatValue(a)).join(' ');
+        self.postMessage({ type: 'log', level, text, timestamp: Date.now() });
+      };
+
+      self.console = {
+        ...self.console,
+        log: (...args) => sendLog('log', args),
+        info: (...args) => sendLog('info', args),
+        warn: (...args) => sendLog('warn', args),
+        error: (...args) => sendLog('error', args),
+        dir: (item) => sendLog('log', [item]),
+        table: (data) => sendLog('log', [data])
+      };
+
+      self.onmessage = async (e) => {
+        const code = e.data;
+        try {
+          const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+          const fn = new AsyncFunction(code);
+          const returnVal = await fn();
+          if (returnVal !== undefined) {
+            sendLog('log', [returnVal]);
+          }
+          self.postMessage({ type: 'done' });
+        } catch (err) {
+          const message = err instanceof Error ? (err.stack || err.message) : String(err);
+          self.postMessage({ type: 'error', error: message });
+        }
+      };
+    `
+
+    const blob = new Blob([workerSource], { type: 'application/javascript' })
+    const url = URL.createObjectURL(blob)
+    const worker = new Worker(url)
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      worker.terminate()
+      URL.revokeObjectURL(url)
+    }
+
+    const timer = setTimeout(() => {
+      cleanup()
+      resolve({
+        entries,
+        error: `Execution timed out after ${timeoutMs}ms (possible infinite loop).`,
+        durationMs: Math.round(performance.now() - startTime)
+      })
+    }, timeoutMs)
+
+	// 成功执行，将log压入entries，如果done完成就进行清理并返回entries 错误就resolve返回已有的entries和错误。
+    worker.onmessage = (event) => {
+      const data = event.data
+      if (data.type === 'log') {
+        entries.push({
+          level: data.level,
+          text: data.text,
+          timestamp: data.timestamp
+        })
+      } else if (data.type === 'done') {
+        cleanup()
+        resolve({
+          entries,
+          durationMs: Math.round(performance.now() - startTime)
+        })
+      } else if (data.type === 'error') {
+        cleanup()
+        resolve({
+          entries,
+          error: data.error,
+          durationMs: Math.round(performance.now() - startTime)
+        })
+      }
+    }
+	// 清理定时器、并且resolve一个error结果。
+    worker.onerror = (err) => {
+      cleanup()
+      resolve({
+        entries,
+        error: err.message || 'Worker execution error',
+        durationMs: Math.round(performance.now() - startTime)
+      })
+    }
+
+    worker.postMessage(jsCode)
+  })
+}
+```
+
+这里动态生成Worker脚本字符串，实现了安全执行用户js代码的沙箱执行器，返回`Promise<RunResult>` 。 核心目的是用户写的代码可能是死循环、可能刷屏console，不能让他卡死主线程或者污染页面。
+
+我们用Blob + URL.createObjectURL动态生成worker脚本，new Worker(url)启动。主线程设置了一个timeoutMs默认5s的计时器，超时了就直接terminate ，worker 并 resolve一个带超时错误的RunResult。 通过worker.postMessage(jsCode)把用户代码丢进worker执行，worker里拦截console、执行代码、用postMessage吧日志、完成、错误传回给主线程。主线程收到了done、error就去cleanup清理定时器、terminate、resolve URL并resolve；期间收到的log累计到entries。
+
+字符串里的内容：
+
+```ts
+      const formatValue = (val, seen = new WeakSet()) => {
+        if (val === undefined) return 'undefined';
+        if (val === null) return 'null';
+        if (typeof val === 'string') return val;
+        if (typeof val === 'number' || typeof val === 'boolean' || typeof val === 'bigint') return String(val);
+        if (typeof val === 'symbol') return val.toString();
+        if (typeof val === 'function') return '[Function: ' + (val.name || 'anonymous') + ']';
+        if (val instanceof Error) return val.stack || (val.name + ': ' + val.message);
+        if (typeof val === 'object') {
+          if (seen.has(val)) return '[Circular]';
+          seen.add(val);
+          try {
+            return JSON.stringify(val, (k, v) => {
+              if (typeof v === 'bigint') return v.toString() + 'n';
+              if (typeof v === 'function') return '[Function: ' + (v.name || 'anonymous') + ']';
+              if (v === undefined) return 'undefined';
+              return v;
+            }, 2);
+          } catch {
+            return Object.prototype.toString.call(val);
+          }
+        }
+        return String(val);
+      };
+
+      const sendLog = (level, args) => {
+        const text = args.map((a) => formatValue(a)).join(' ');
+        self.postMessage({ type: 'log', level, text, timestamp: Date.now() });
+      };
+
+      self.console = {
+        ...self.console,
+        log: (...args) => sendLog('log', args),
+        info: (...args) => sendLog('info', args),
+        warn: (...args) => sendLog('warn', args),
+        error: (...args) => sendLog('error', args),
+        dir: (item) => sendLog('log', [item]),
+        table: (data) => sendLog('log', [data])
+      };
+
+      self.onmessage = async (e) => {
+        const code = e.data;
+        try {
+          const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+          const fn = new AsyncFunction(code);
+          const returnVal = await fn();
+          if (returnVal !== undefined) {
+            sendLog('log', [returnVal]);
+          }
+          self.postMessage({ type: 'done' });
+        } catch (err) {
+          const message = err instanceof Error ? (err.stack || err.message) : String(err);
+          self.postMessage({ type: 'error', error: message });
+        }
+      };
+    
+```
+
+它本身不会在主线程执行，而是当做源码文本，通过blob打包为一个Js文件，再new Worker(url)加载到独立worker线程里执行，所以这个字符串里的所有东西都是在worker的全局作用域里跑的。
+
+worker里的日志输出序列化我们使用的是formatValue 来逐层处理的，它按照类型逐层处理：
+
+- `undefined` / `null` → 原样字符串
+    
+- `string` → 直接返回（不再加引号）
+    
+- `number` / `boolean` / `bigint` → `String(val)`
+    
+- `symbol` → `val.toString()`
+    
+- `function` → `[Function: 名字]`
+    
+- `Error` → 优先 `stack`，没有就 `name: message`
+    
+- `object` → 用 `WeakSet` 的 `seen` 检测循环引用，命中返回 `[Circular]`；否则 `JSON.stringify(val, replacer, 2)`，replacer 里把 `bigint` 转成 `"123n"`、`function` 转成 `[Function: ...]`、`undefined` 转成字符串 `'undefined'`；`JSON.stringify` 抛错（比如嵌套循环引用、getter 抛错）时回退到 `Object.prototype.toString.call(val)`，输出 `[object Object]` 这类
+    
+- 兜底 `String(val)`
+
+注意 `seen` 只在顶层这次调用里生效，`JSON.stringify` 内部的嵌套循环引用它管不到，靠 `try/catch` 兜底——所以嵌套循环引用会显示成 `[object Object]` 而不是 `[Circular]`，这是前面提过的小瑕疵。
+
+sendLog把日志结构化返回主线程。
+
+```ts
+const sendLog = (level, args) => {
+  const text = args.map((a) => formatValue(a)).join(' ')
+  self.postMessage({ type: 'log', level, text, timestamp: Date.now() })
+}
+```
+
+它把参数数组逐个 `formatValue`、用空格拼成一个 `text`，然后 `postMessage` 一个 `{ type: 'log', level, text, timestamp }` 对象。主线程的 `worker.onmessage` 就是靠 `data.type === 'log'` 来识别并 push 进 `entries` 的。**这是 worker 和主线程之间唯一的日志通道**，格式必须和主线程解析逻辑对齐。

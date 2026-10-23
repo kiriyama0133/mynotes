@@ -70,7 +70,7 @@ UI虚拟化的核心思想就是**只渲染可视范围内的控件**，所以�
 ```
 虚拟化的前提是 **“有限的空间”**，如果没有 `ScrollViewer`，`ItemsControl` 就会试图**根据内容撑大自己，占据无限的空间**，一旦拥有无限空间，`VirtualizingStackPanel` 就会认为“视口无限大”，于是它还是会渲染所有 1000 个元素。
 
-<ScrollViewer CanContentScroll="True" ...> 这个步骤也是十分关键的，如果不写这个地方，就会设置为False，为物理滚动，scrollViewer组件会把自己当做单纯的图片浏览器。
+`<ScrollViewer CanContentScroll="True" ...>` 这个步骤也是十分关键的，如果不写这个地方，就会设置为False，为物理滚动，scrollViewer组件会把自己当做单纯的图片浏览器。
 
 **`VirtualizingStackPanel`**：
 
