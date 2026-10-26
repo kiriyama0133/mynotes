@@ -66,39 +66,174 @@ await _unitOfWork.SaveAsync(...);          // 3. 提交数据库事务
 
 那么怎么避免这种情况，那么应该使用**事务性发件箱模式**
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 950" width="100%" height="100%">
+  <defs>
+    <!-- 基础阴影 -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    
+    <!-- 强调发光（用于事务） -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
 
-```mermaid
-flowchart TD
-    subgraph App["应用层 / UseCase"]
-        Business["1. 业务逻辑 (如存款)"]
-        CreateOutbox["2. 创建待发事件消息"]
-    end
+    <!-- 箭头标记 -->
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6" />
+    </marker>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+    </marker>
 
-    subgraph Database["同一个 SQL Server 数据库事务"]
-        AccountTable[("Account / Credit 表")]
-        OutboxTable[("OutboxMessages 表 (发件箱)")]
-    end
+    <!-- 背景网格 -->
+    <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="1"/>
+    </pattern>
+  </defs>
 
-    subgraph BackgroundWorker["后台发布进程 (Outbox Processor)"]
-        Poller["定期拉取未发送消息 / CDC"]
-        MarkSent["标记消息为已发送"]
-    end
+  <!-- 背景 -->
+  <rect width="100%" height="100%" fill="#0b1120" />
+  <rect width="100%" height="100%" fill="url(#grid)" />
 
-    subgraph Broker["消息代理 (RabbitMQ)"]
-        RabbitMQ["RabbitMQ 交换机/队列"]
-    end
+  <!-- ================= Subgraph: App (应用层) ================= -->
+  <g transform="translate(150, 50)">
+    <!-- 容器 -->
+    <rect width="600" height="160" rx="16" fill="#1e293b" stroke="#334155" stroke-width="2" opacity="0.6"/>
+    <text x="20" y="30" fill="#94a3b8" font-family="sans-serif" font-size="14" font-weight="bold">应用层 / UseCase</text>
+    
+    <!-- 业务逻辑节点 -->
+    <g transform="translate(50, 60)">
+      <rect width="200" height="70" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="2" filter="url(#shadow)"/>
+      <text x="100" y="30" fill="#e2e8f0" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">1. 业务逻辑</text>
+      <text x="100" y="50" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">(如存款)</text>
+    </g>
 
-    Business -->|更新业务数据| AccountTable
-    CreateOutbox -->|插入待发消息| OutboxTable
+    <!-- 创建消息节点 -->
+    <g transform="translate(350, 60)">
+      <rect width="200" height="70" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="2" filter="url(#shadow)"/>
+      <text x="100" y="30" fill="#e2e8f0" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">2. 创建待发事件消息</text>
+      <text x="100" y="50" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">(如 OutboxMessage)</text>
+    </g>
+  </g>
 
-    %% 这里加上了双引号，修复了解析错误
-    AccountTable -.->|"【同一个 SaveAsync() 本地事务】<br/>要么同时成功，要么同时回滚！"| OutboxTable
+  <!-- ================= 连线：App -> DB ================= -->
+  <!-- 业务逻辑 -> 账户表 -->
+  <path d="M 300 200 Q 300 260 300 300" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <rect x="235" y="235" width="90" height="24" rx="4" fill="#1e293b" />
+  <text x="280" y="252" fill="#38bdf8" font-family="sans-serif" font-size="12" text-anchor="middle">更新业务数据</text>
 
-    Poller -->|读取未发送消息| OutboxTable
-    Poller -->|投递事件| RabbitMQ
-    RabbitMQ -->|ACK 确认| MarkSent
-    MarkSent -->|更新状态为 Processed| OutboxTable
-```
+  <!-- 创建消息 -> 发件箱表 -->
+  <path d="M 600 200 Q 600 260 600 300" fill="none" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <rect x="545" y="235" width="90" height="24" rx="4" fill="#1e293b" />
+  <text x="590" y="252" fill="#38bdf8" font-family="sans-serif" font-size="12" text-anchor="middle">插入待发消息</text>
+
+
+  <!-- ================= Subgraph: Database (数据库) ================= -->
+  <g transform="translate(100, 320)">
+    <!-- 容器 -->
+    <rect width="700" height="260" rx="16" fill="#132e24" stroke="#10b981" stroke-width="2" opacity="0.8" filter="url(#shadow)"/>
+    <text x="20" y="30" fill="#34d399" font-family="sans-serif" font-size="14" font-weight="bold">同一个 SQL Server 数据库事务</text>
+    
+    <!-- 账户表 -->
+    <g transform="translate(80, 80)">
+      <rect width="220" height="80" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="2" />
+      <!-- 表头装饰线 -->
+      <line x1="0" y1="30" x2="220" y2="30" stroke="#10b981" stroke-width="1" stroke-opacity="0.5"/>
+      <text x="110" y="20" fill="#a7f3d0" font-family="monospace" font-size="14" font-weight="bold" text-anchor="middle">Account / Credit 表</text>
+      <text x="110" y="55" fill="#64748b" font-family="monospace" font-size="12" text-anchor="middle">业务数据变更 (UPDATE)</text>
+    </g>
+
+    <!-- 发件箱表 -->
+    <g transform="translate(400, 80)">
+      <rect width="220" height="80" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="2" />
+      <line x1="0" y1="30" x2="220" y2="30" stroke="#10b981" stroke-width="1" stroke-opacity="0.5"/>
+      <text x="110" y="20" fill="#a7f3d0" font-family="monospace" font-size="14" font-weight="bold" text-anchor="middle">OutboxMessages 表</text>
+      <text x="110" y="55" fill="#64748b" font-family="monospace" font-size="12" text-anchor="middle">消息暂存 (INSERT)</text>
+    </g>
+
+    <!-- 强事务连线 -->
+    <path d="M 300 440 L 400 440" fill="none" stroke="#10b981" stroke-width="3" stroke-dasharray="8,4" marker-end="url(#arrow-green)"/>
+    
+    <!-- 事务说明标签 -->
+    <g transform="translate(150, 180)">
+      <rect width="400" height="50" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2" filter="url(#glow)"/>
+      <text x="200" y="20" fill="#d1fae5" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">【同一个 SaveAsync() 本地事务】</text>
+      <text x="200" y="38" fill="#34d399" font-family="sans-serif" font-size="12" text-anchor="middle">要么同时成功，要么同时回滚！</text>
+    </g>
+  </g>
+
+
+  <!-- ================= 连线：DB -> Worker ================= -->
+  <!-- 发件箱 -> 后台拉取 -->
+  <path d="M 450 580 Q 450 640 250 670" fill="none" stroke="#64748b" stroke-width="2" marker-end="url(#arrow-gray)"/>
+  <rect x="335" y="615" width="100" height="24" rx="4" fill="#1e293b" />
+  <text x="385" y="632" fill="#cbd5e1" font-family="sans-serif" font-size="12" text-anchor="middle">读取未发送消息</text>
+  
+
+  <!-- ================= Subgraph: BackgroundWorker ================= -->
+  <g transform="translate(50, 680)">
+    <!-- 容器 -->
+    <rect width="300" height="200" rx="16" fill="#2e1f11" stroke="#f59e0b" stroke-width="2" opacity="0.8" filter="url(#shadow)"/>
+    <text x="20" y="30" fill="#fcd34d" font-family="sans-serif" font-size="14" font-weight="bold">后台发布进程 (Worker)</text>
+
+    <!-- 轮询器 -->
+    <g transform="translate(40, 60)">
+      <rect width="220" height="50" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="2" />
+      <text x="110" y="30" fill="#fde68a" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">定期拉取 / CDC</text>
+    </g>
+
+    <!-- 标记器 -->
+    <g transform="translate(40, 130)">
+      <rect width="220" height="50" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="2" />
+      <text x="110" y="30" fill="#fde68a" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">标记消息为已发送</text>
+    </g>
+  </g>
+
+
+  <!-- ================= Subgraph: Broker ================= -->
+  <g transform="translate(550, 680)">
+    <!-- 容器 -->
+    <rect width="300" height="200" rx="16" fill="#2e1065" stroke="#8b5cf6" stroke-width="2" opacity="0.8" filter="url(#shadow)"/>
+    <text x="20" y="30" fill="#c4b5fd" font-family="sans-serif" font-size="14" font-weight="bold">消息代理 (Broker)</text>
+
+    <!-- RabbitMQ -->
+    <g transform="translate(40, 80)">
+      <rect width="220" height="70" rx="8" fill="#0f172a" stroke="#8b5cf6" stroke-width="2" />
+      <text x="110" y="30" fill="#ddd6fe" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">RabbitMQ</text>
+      <text x="110" y="50" fill="#a78bfa" font-family="sans-serif" font-size="12" text-anchor="middle">交换机 / 队列</text>
+    </g>
+  </g>
+
+
+  <!-- ================= Worker 与 Broker 间的交互 ================= -->
+  <!-- Poller -> RabbitMQ (投递) -->
+  <path d="M 310 765 L 580 765" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <rect x="395" y="742" width="100" height="24" rx="4" fill="#1e293b" />
+  <text x="445" y="759" fill="#fbbf24" font-family="sans-serif" font-size="12" text-anchor="middle">投递事件</text>
+
+  <!-- RabbitMQ -> MarkSent (ACK) -->
+  <path d="M 580 815 L 310 815" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="4,2" marker-end="url(#arrow-purple)"/>
+  <rect x="395" y="830" width="100" height="24" rx="4" fill="#1e293b" />
+  <text x="445" y="847" fill="#c4b5fd" font-family="sans-serif" font-size="12" text-anchor="middle">ACK 确认</text>
+
+  <!-- MarkSent -> OutboxTable (更新状态) -->
+  <path d="M 200 680 Q 200 620 450 580" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <rect x="315" y="650" width="120" height="24" rx="4" fill="#1e293b" />
+  <text x="375" y="667" fill="#fbbf24" font-family="sans-serif" font-size="12" text-anchor="middle">更新为 Processed</text>
+
+</svg>
+
 
 可以在数据库新建一张叫做OutboxMessage的表：
 
@@ -147,33 +282,154 @@ DotNetCore.CAP：国内广泛采用的分布式事务与 EventBus 方案，原�
 
 核心执行时序（Outbox 怎么解决双写问题）：
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant UC as UseCase (Deposit)
-    participant Repo as AccountRepo
-    participant Bus as MassTransit
-    participant DB as SQL Server
-    participant Worker as 后台调度器
-    participant MQ as RabbitMQ
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1000" width="100%" height="100%">
+  <defs>
+    <!-- 基础阴影 -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
 
-    UC->>Repo: 1. 更新业务聚合状态
-    Repo->>DB: 变更挂入 EF Core ChangeTracker
-    UC->>Bus: 2. _serviceBus.PublishEventAsync(...)
-    Note over Bus,DB: 【关键】：MassTransit 不直接发网络请求<br/>而是将消息实体挂入同一个 DbContext！
+    <!-- 箭头标记 (实线) -->
+    <marker id="arrow-solid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+    </marker>
     
-    UC->>DB: 3. await _unitOfWork.SaveAsync()
-    Note over DB: 【同一个本地 ACID 事务】提交：<br/>• 业务流水表更新<br/>• OutboxMessage 待发消息表插入<br/>若任一失败，全部原子回滚！
+    <!-- 箭头标记 (虚线返回) -->
+    <marker id="arrow-dashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e1" />
+    </marker>
 
-    rect rgb(230, 245, 230)
-    Note over Worker,MQ: 【后台异步保障投递（至少投递一次）】
-    Worker->>DB: 轮询检测已提交的 Outbox 消息
-    Worker->>MQ: 投递到 RabbitMQ
-    MQ-->>Worker: ACK 确认
-    Worker->>DB: 标记消息为已发送 / 清理
-    end
-```
+    <!-- 背景网格 -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="1"/>
+    </pattern>
+  </defs>
 
+  <!-- 背景 -->
+  <rect width="100%" height="100%" fill="#0f172a" />
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- ================= Participants (顶部角色) ================= -->
+  <!-- UC -->
+  <g transform="translate(50, 40)">
+    <rect width="150" height="40" rx="6" fill="#1e293b" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+    <text x="75" y="25" fill="#60a5fa" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">UseCase (Deposit)</text>
+  </g>
+  <!-- Repo -->
+  <g transform="translate(240, 40)">
+    <rect width="130" height="40" rx="6" fill="#1e293b" stroke="#06b6d4" stroke-width="2" filter="url(#shadow)"/>
+    <text x="65" y="25" fill="#22d3ee" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">AccountRepo</text>
+  </g>
+  <!-- Bus -->
+  <g transform="translate(410, 40)">
+    <rect width="130" height="40" rx="6" fill="#1e293b" stroke="#8b5cf6" stroke-width="2" filter="url(#shadow)"/>
+    <text x="65" y="25" fill="#a78bfa" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">MassTransit</text>
+  </g>
+  <!-- DB -->
+  <g transform="translate(580, 40)">
+    <rect width="130" height="40" rx="6" fill="#1e293b" stroke="#10b981" stroke-width="2" filter="url(#shadow)"/>
+    <text x="65" y="25" fill="#34d399" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">SQL Server</text>
+  </g>
+  <!-- Worker -->
+  <g transform="translate(750, 40)">
+    <rect width="130" height="40" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="2" filter="url(#shadow)"/>
+    <text x="65" y="25" fill="#fbbf24" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">后台调度器</text>
+  </g>
+  <!-- MQ -->
+  <g transform="translate(920, 40)">
+    <rect width="130" height="40" rx="6" fill="#1e293b" stroke="#ec4899" stroke-width="2" filter="url(#shadow)"/>
+    <text x="65" y="25" fill="#f472b6" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">RabbitMQ</text>
+  </g>
+
+  <!-- ================= Lifelines (生命线) ================= -->
+  <line x1="125" y1="80" x2="125" y2="920" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+  <line x1="305" y1="80" x2="305" y2="920" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+  <line x1="475" y1="80" x2="475" y2="920" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+  <line x1="645" y1="80" x2="645" y2="920" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+  <line x1="815" y1="80" x2="815" y2="920" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+  <line x1="985" y1="80" x2="985" y2="920" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+
+  <!-- ================= 1. UC -> Repo ================= -->
+  <g transform="translate(0, 120)">
+    <line x1="125" y1="0" x2="295" y2="0" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-solid)"/>
+    <circle cx="125" cy="0" r="12" fill="#3b82f6" />
+    <text x="125" y="4" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">1</text>
+    <text x="210" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" text-anchor="middle">更新业务聚合状态</text>
+  </g>
+
+  <!-- ================= Repo -> DB ================= -->
+  <g transform="translate(0, 170)">
+    <line x1="305" y1="0" x2="635" y2="0" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-solid)"/>
+    <text x="470" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" text-anchor="middle">变更挂入 EF Core ChangeTracker</text>
+  </g>
+
+  <!-- ================= 2. UC -> Bus ================= -->
+  <g transform="translate(0, 240)">
+    <line x1="125" y1="0" x2="465" y2="0" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-solid)"/>
+    <circle cx="125" cy="0" r="12" fill="#3b82f6" />
+    <text x="125" y="4" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">2</text>
+    <text x="295" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" text-anchor="middle">_serviceBus.PublishEventAsync(...)</text>
+  </g>
+
+  <!-- ================= Note over Bus, DB ================= -->
+  <g transform="translate(400, 280)">
+    <rect width="290" height="60" rx="6" fill="#2e1065" stroke="#8b5cf6" stroke-width="1" filter="url(#shadow)"/>
+    <path d="M 0 10 L 15 0 L 0 10 L 0 60 Z" fill="#8b5cf6" opacity="0.5"/>
+    <text x="145" y="25" fill="#ddd6fe" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">【关键】：MassTransit 不直接发网络请求</text>
+    <text x="145" y="45" fill="#c4b5fd" font-family="sans-serif" font-size="13" text-anchor="middle">而是将消息实体挂入同一个 DbContext！</text>
+  </g>
+
+  <!-- ================= 3. UC -> DB ================= -->
+  <g transform="translate(0, 380)">
+    <line x1="125" y1="0" x2="635" y2="0" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-solid)"/>
+    <circle cx="125" cy="0" r="12" fill="#3b82f6" />
+    <text x="125" y="4" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">3</text>
+    <text x="380" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" text-anchor="middle">await _unitOfWork.SaveAsync()</text>
+  </g>
+
+  <!-- ================= Note over DB ================= -->
+  <g transform="translate(520, 420)">
+    <rect width="250" height="90" rx="6" fill="#064e3b" stroke="#10b981" stroke-width="1" filter="url(#shadow)"/>
+    <path d="M 0 10 L 15 0 L 0 10 L 0 90 Z" fill="#10b981" opacity="0.5"/>
+    <text x="125" y="25" fill="#a7f3d0" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">【同一个本地 ACID 事务】提交：</text>
+    <text x="125" y="45" fill="#6ee7b7" font-family="sans-serif" font-size="13" text-anchor="middle">• 业务流水表更新</text>
+    <text x="125" y="65" fill="#6ee7b7" font-family="sans-serif" font-size="13" text-anchor="middle">• OutboxMessage 待发消息表插入</text>
+    <text x="125" y="85" fill="#fca5a5" font-family="sans-serif" font-size="12" text-anchor="middle">若任一失败，全部原子回滚！</text>
+  </g>
+
+
+  <!-- ================= rect: Background Worker Async ================= -->
+  <g transform="translate(710, 540)">
+    <rect width="440" height="320" rx="8" fill="#f59e0b" fill-opacity="0.05" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5,3"/>
+    <rect width="220" height="24" x="110" y="-12" rx="4" fill="#2e1f11" />
+    <text x="220" y="4" fill="#fbbf24" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">【后台异步保障投递（至少投递一次）】</text>
+  </g>
+
+  <!-- Worker -> DB (轮询) -->
+  <g transform="translate(0, 600)">
+    <line x1="815" y1="0" x2="655" y2="0" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-solid)"/>
+    <text x="735" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" text-anchor="middle">轮询检测已提交的 Outbox 消息</text>
+  </g>
+
+  <!-- Worker -> MQ (投递) -->
+  <g transform="translate(0, 670)">
+    <line x1="815" y1="0" x2="975" y2="0" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-solid)"/>
+    <text x="895" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" text-anchor="middle">投递到 RabbitMQ</text>
+  </g>
+
+  <!-- MQ -->> Worker (ACK 确认) -->
+  <g transform="translate(0, 730)">
+    <line x1="985" y1="0" x2="825" y2="0" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow-dashed)"/>
+    <text x="905" y="-10" fill="#94a3b8" font-family="sans-serif" font-size="14" text-anchor="middle">ACK 确认</text>
+  </g>
+
+  <!-- Worker -> DB (标记已发送) -->
+  <g transform="translate(0, 800)">
+    <line x1="815" y1="0" x2="655" y2="0" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-solid)"/>
+    <text x="735" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" text-anchor="middle">标记消息为已发送 / 清理</text>
+  </g>
+
+</svg>
 
 实现：
 
@@ -318,41 +574,162 @@ services.AddMassTransitWithOutbox(builder.Configuration);
 
 改造和配置了 `x.AddEntityFrameworkOutbox<GenocsContext>() 和 o.UseBusOutbox()` 之后，底层的执行逻辑发生了根本性改变
 
-```mermaid
-  flowchart TD
-        subgraph App["1. 业务调用阶段"]
-            Repo["UpdateAsync (挂载 Credit 实体)"]
-            Publish["PublishEventAsync (被 Outbox 拦截)"]
-        end
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1050" width="100%" height="100%">
+  <defs>
+    <!-- 基础阴影 -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
 
-        subgraph Memory["EF Core 内存 ChangeTracker (变更追踪器)"]
-            Entity1["待插入实体：Credit"]
-            Entity2["待插入实体：OutboxMessage (事件被序列化为数据)"]
-        end
+    <!-- 箭头标记 -->
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444" />
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
+    </marker>
 
-        subgraph DB["2. 数据库事务执行阶段 (SaveAsync)"]
-            SQL["BEGIN TRANSACTION;
-                 INSERT INTO Credit ...;
-                 INSERT INTO OutboxMessage ...;"]
-            Check{执行是否异常?<br/>主键冲突 / 网络故障}
-            Commit["COMMIT TRANSACTION;<br/>(业务表与消息表同时永久保存)"]
-            Rollback["ROLLBACK TRANSACTION;<br/>(Credit 和 OutboxMessage 同时抹去)"]
-        end
+    <!-- 背景网格 -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="1"/>
+    </pattern>
+  </defs>
 
-        subgraph AsyncWorker["3. 后台发信阶段 (Outbox Processor)"]
-            Poller["扫描数据库已提交的 OutboxMessage"]
-            SendMQ["向 RabbitMQ 发送消息并 ACK"]
-        end
+  <!-- 全局背景 -->
+  <rect width="100%" height="100%" fill="#0b1120" />
+  <rect width="100%" height="100%" fill="url(#grid)" />
 
-        Repo --> Entity1
-        Publish -->|【不发网络请求】仅转为实体| Entity2
-        Entity1 --> SQL
-        Entity2 --> SQL
-        SQL --> Check
-        Check -- 无异常 --> Commit --> Poller --> SendMQ
-        Check -- 发生异常 --> Rollback
-        Rollback -.->|库里根本没有消息| Poller
-```
+  <!-- ================= 1. 业务调用阶段 (App) ================= -->
+  <g transform="translate(50, 50)">
+    <rect width="1000" height="160" rx="12" fill="#1e293b" stroke="#3b82f6" stroke-width="2" opacity="0.8" filter="url(#shadow)"/>
+    <text x="20" y="30" fill="#60a5fa" font-family="sans-serif" font-size="16" font-weight="bold">1. 业务调用阶段</text>
+    
+    <g transform="translate(150, 50)">
+      <rect width="250" height="60" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="2" />
+      <text x="125" y="25" fill="#e2e8f0" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">Repo.UpdateAsync</text>
+      <text x="125" y="45" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">(挂载 Credit 实体)</text>
+    </g>
+
+    <g transform="translate(600, 50)">
+      <rect width="250" height="60" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="2" />
+      <text x="125" y="25" fill="#e2e8f0" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">PublishEventAsync</text>
+      <text x="125" y="45" fill="#fbbf24" font-family="sans-serif" font-size="12" text-anchor="middle">(被 Outbox 拦截)</text>
+    </g>
+  </g>
+
+  <!-- 连线 App -> Memory -->
+  <path d="M 325 210 L 325 260" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-gray)"/>
+  <path d="M 775 210 L 775 260" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-gray)"/>
+  
+  <!-- 特殊标签：Publish 不发网络请求 -->
+  <g transform="translate(820, 220)">
+    <rect width="200" height="30" rx="6" fill="#2e1065" stroke="#8b5cf6" stroke-width="1" />
+    <text x="100" y="20" fill="#c4b5fd" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">【不发网络请求】仅转为实体</text>
+  </g>
+
+  <!-- ================= 2. EF Core 内存 ChangeTracker (Memory) ================= -->
+  <g transform="translate(50, 280)">
+    <rect width="1000" height="180" rx="12" fill="#1e293b" stroke="#8b5cf6" stroke-width="2" opacity="0.8" filter="url(#shadow)"/>
+    <text x="20" y="30" fill="#a78bfa" font-family="sans-serif" font-size="16" font-weight="bold">EF Core 内存 ChangeTracker (变更追踪器)</text>
+    
+    <g transform="translate(150, 60)">
+      <rect width="250" height="70" rx="8" fill="#0f172a" stroke="#8b5cf6" stroke-width="2" />
+      <text x="125" y="30" fill="#e2e8f0" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">待插入实体：Credit</text>
+      <text x="125" y="50" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">(State: Added)</text>
+    </g>
+
+    <g transform="translate(600, 60)">
+      <rect width="250" height="70" rx="8" fill="#0f172a" stroke="#8b5cf6" stroke-width="2" />
+      <text x="125" y="30" fill="#e2e8f0" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">待插入实体：OutboxMessage</text>
+      <text x="125" y="50" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">(事件被序列化为数据)</text>
+    </g>
+  </g>
+
+  <!-- 连线 Memory -> DB -->
+  <path d="M 325 460 L 325 520 L 500 520 L 500 550" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-gray)"/>
+  <path d="M 775 460 L 775 520 L 600 520 L 600 550" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-gray)"/>
+
+  <!-- ================= 3. 数据库事务执行阶段 (DB) ================= -->
+  <g transform="translate(50, 560)">
+    <rect width="1000" height="320" rx="12" fill="#064e3b" stroke="#10b981" stroke-width="2" opacity="0.8" filter="url(#shadow)"/>
+    <text x="20" y="30" fill="#34d399" font-family="sans-serif" font-size="16" font-weight="bold">2. 数据库事务执行阶段 (SaveAsync)</text>
+
+    <!-- SQL 语句框 -->
+    <g transform="translate(280, 50)">
+      <rect width="440" height="80" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="2" />
+      <text x="220" y="25" fill="#a7f3d0" font-family="monospace" font-size="13" font-weight="bold" text-anchor="middle">BEGIN TRANSACTION;</text>
+      <text x="220" y="45" fill="#e2e8f0" font-family="monospace" font-size="13" text-anchor="middle">INSERT INTO Credit ...;</text>
+      <text x="220" y="65" fill="#e2e8f0" font-family="monospace" font-size="13" text-anchor="middle">INSERT INTO OutboxMessage ...;</text>
+    </g>
+
+    <!-- 指向 Check -->
+    <path d="M 500 130 L 500 170" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-gray)"/>
+
+    <!-- 条件判断 -->
+    <g transform="translate(400, 180)">
+      <polygon points="100,0 200,40 100,80 0,40" fill="#0f172a" stroke="#f59e0b" stroke-width="2"/>
+      <text x="100" y="35" fill="#fbbf24" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">执行是否异常?</text>
+      <text x="100" y="55" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">主键冲突 / 网络故障</text>
+    </g>
+
+    <!-- 分支：无异常 (Commit) -->
+    <path d="M 600 220 L 700 220 L 700 250" fill="none" stroke="#10b981" stroke-width="2" marker-end="url(#arrow-green)"/>
+    <text x="650" y="210" fill="#10b981" font-family="sans-serif" font-size="12" font-weight="bold">无异常</text>
+    
+    <g transform="translate(580, 260)">
+      <rect width="240" height="60" rx="8" fill="#022c22" stroke="#10b981" stroke-width="2" />
+      <text x="120" y="25" fill="#34d399" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">COMMIT TRANSACTION;</text>
+      <text x="120" y="45" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">(业务表与消息表同时永久保存)</text>
+    </g>
+
+    <!-- 分支：发生异常 (Rollback) -->
+    <path d="M 400 220 L 300 220 L 300 250" fill="none" stroke="#ef4444" stroke-width="2" marker-end="url(#arrow-red)"/>
+    <text x="350" y="210" fill="#ef4444" font-family="sans-serif" font-size="12" font-weight="bold">发生异常</text>
+
+    <g transform="translate(180, 260)">
+      <rect width="240" height="60" rx="8" fill="#450a0a" stroke="#ef4444" stroke-width="2" />
+      <text x="120" y="25" fill="#fca5a5" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">ROLLBACK TRANSACTION;</text>
+      <text x="120" y="45" fill="#fca5a5" font-family="sans-serif" font-size="12" text-anchor="middle">(Credit 和 Outbox 同时抹去)</text>
+    </g>
+  </g>
+
+  <!-- 连线 Commit -> Worker -->
+  <path d="M 750 880 L 750 940" fill="none" stroke="#10b981" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+  <!-- 特殊连线 Rollback -> Worker (虚线，表示没有消息) -->
+  <path d="M 250 880 L 250 940" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow-red)"/>
+  <g transform="translate(140, 900)">
+    <rect width="160" height="24" rx="4" fill="#1e293b" />
+    <text x="80" y="17" fill="#fca5a5" font-family="sans-serif" font-size="12" text-anchor="middle">库里根本没有消息</text>
+  </g>
+
+  <!-- ================= 4. 后台发信阶段 (AsyncWorker) ================= -->
+  <g transform="translate(50, 950)">
+    <rect width="1000" height="150" rx="12" fill="#1e293b" stroke="#f59e0b" stroke-width="2" opacity="0.8" filter="url(#shadow)"/>
+    <text x="20" y="30" fill="#fbbf24" font-family="sans-serif" font-size="16" font-weight="bold">3. 后台发信阶段 (Outbox Processor)</text>
+
+    <g transform="translate(200, 60)">
+      <rect width="250" height="60" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="2" />
+      <text x="125" y="25" fill="#e2e8f0" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">Poller (扫描未发送)</text>
+      <text x="125" y="45" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">扫描数据库已提交的消息</text>
+    </g>
+
+    <path d="M 450 90 L 580 90" fill="none" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow-gray)"/>
+
+    <g transform="translate(600, 60)">
+      <rect width="250" height="60" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="2" />
+      <text x="125" y="25" fill="#e2e8f0" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">向 RabbitMQ 发送并 ACK</text>
+      <text x="125" y="45" fill="#94a3b8" font-family="sans-serif" font-size="12" text-anchor="middle">(异步保障投递)</text>
+    </g>
+  </g>
+
+</svg>
 
 当调用了 `await _serviceBus.PublishEventAsync(new DepositCompleted { ... });` 的时候，由于开启了UseBusOutbox的MassTransit根本没有向RabbitMQ发送任何网络通信，它仅仅把事件对象序列化为了json文本，创建了一个OutboxMessage数据实体，直接塞进了当前同一个GenocsContext 的内存变更追踪器中。
 
@@ -417,24 +794,115 @@ EntityState 的 5 种状态
 
 我们来还原在用例 Deposit.cs 执行的那几毫秒内，ChangeTracker 内存里的真实演变：
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Code as Code (UseCase 代码)
-    participant CT as EF Core ChangeTracker<br/>(内存中)
-    participant DB as SQL Server
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" width="100%" height="100%">
+  <defs>
+    <!-- 基础阴影 -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
 
-    Code->>CT: 1. accountRepository.UpdateAsync(account, credit)
-    Note right of CT: 实际上只是在内存中把实体的状态标记为<br/>Modified / Added，并未发 SQL
+    <!-- 箭头标记 -->
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6" />
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+    </marker>
 
-    Code->>CT: 2. _serviceBus.PublishEventAsync(...)
-    Note right of CT: MassTransit 拦截发布，把消息挂载到<br/>ChangeTracker 的 Outbox 表中 (Added)
+    <!-- 背景网格 -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="1"/>
+    </pattern>
+  </defs>
 
-    Code->>CT: 3. unitOfWork.SaveAsync() (收银结算时刻)
-    
-    CT->>DB: 发送合并的 SQL 事务批处理 (INSERT / UPDATE)
-    Note over DB: 同一个本地 ACID 事务<br/>要么同时成功，要么同时回滚
-```
+  <!-- 全局背景 -->
+  <rect width="100%" height="100%" fill="#0b1120" />
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- ================= Participants (顶部角色) ================= -->
+  <!-- Code -->
+  <g transform="translate(100, 40)">
+    <rect width="200" height="50" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="2" filter="url(#shadow)"/>
+    <text x="100" y="30" fill="#60a5fa" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Code (UseCase 代码)</text>
+  </g>
+
+  <!-- ChangeTracker -->
+  <g transform="translate(400, 40)">
+    <rect width="200" height="50" rx="8" fill="#1e293b" stroke="#8b5cf6" stroke-width="2" filter="url(#shadow)"/>
+    <text x="100" y="20" fill="#a78bfa" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">EF Core ChangeTracker</text>
+    <text x="100" y="40" fill="#c4b5fd" font-family="sans-serif" font-size="13" text-anchor="middle">(内存中)</text>
+  </g>
+
+  <!-- SQL Server -->
+  <g transform="translate(700, 40)">
+    <rect width="200" height="50" rx="8" fill="#1e293b" stroke="#10b981" stroke-width="2" filter="url(#shadow)"/>
+    <text x="100" y="30" fill="#34d399" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">SQL Server</text>
+  </g>
+
+  <!-- ================= Lifelines (生命线) ================= -->
+  <line x1="200" y1="90" x2="200" y2="750" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+  <line x1="500" y1="90" x2="500" y2="750" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+  <line x1="800" y1="90" x2="800" y2="750" stroke="#334155" stroke-width="2" stroke-dasharray="6,4" />
+
+  <!-- ================= 1. UpdateAsync ================= -->
+  <g transform="translate(0, 140)">
+    <line x1="200" y1="0" x2="490" y2="0" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <circle cx="200" cy="0" r="12" fill="#3b82f6" />
+    <text x="200" y="4" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">1</text>
+    <text x="345" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">accountRepository.UpdateAsync(account, credit)</text>
+  </g>
+
+  <!-- Note 1 -->
+  <g transform="translate(520, 160)">
+    <rect width="340" height="60" rx="6" fill="#2e1065" stroke="#8b5cf6" stroke-width="1" filter="url(#shadow)"/>
+    <path d="M 0 10 L 15 0 L 0 10 L 0 60 Z" fill="#8b5cf6" opacity="0.5"/>
+    <text x="170" y="25" fill="#ddd6fe" font-family="sans-serif" font-size="13" text-anchor="middle">实际上只是在内存中把实体的状态标记为</text>
+    <text x="170" y="45" fill="#c4b5fd" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Modified / Added，并未发 SQL</text>
+  </g>
+
+  <!-- ================= 2. PublishEventAsync ================= -->
+  <g transform="translate(0, 280)">
+    <line x1="200" y1="0" x2="490" y2="0" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <circle cx="200" cy="0" r="12" fill="#3b82f6" />
+    <text x="200" y="4" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">2</text>
+    <text x="345" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">_serviceBus.PublishEventAsync(...)</text>
+  </g>
+
+  <!-- Note 2 -->
+  <g transform="translate(520, 300)">
+    <rect width="340" height="60" rx="6" fill="#2e1065" stroke="#8b5cf6" stroke-width="1" filter="url(#shadow)"/>
+    <path d="M 0 10 L 15 0 L 0 10 L 0 60 Z" fill="#8b5cf6" opacity="0.5"/>
+    <text x="170" y="25" fill="#ddd6fe" font-family="sans-serif" font-size="13" text-anchor="middle">MassTransit 拦截发布，把消息挂载到</text>
+    <text x="170" y="45" fill="#c4b5fd" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">ChangeTracker 的 Outbox 表中 (Added)</text>
+  </g>
+
+  <!-- ================= 3. SaveAsync ================= -->
+  <g transform="translate(0, 440)">
+    <line x1="200" y1="0" x2="490" y2="0" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <circle cx="200" cy="0" r="12" fill="#3b82f6" />
+    <text x="200" y="4" fill="#ffffff" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">3</text>
+    <text x="345" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">unitOfWork.SaveAsync() (收银结算时刻)</text>
+  </g>
+
+  <!-- ================= 4. CT -> DB ================= -->
+  <g transform="translate(0, 540)">
+    <line x1="500" y1="0" x2="790" y2="0" stroke="#8b5cf6" stroke-width="2" marker-end="url(#arrow-purple)"/>
+    <text x="645" y="-10" fill="#e2e8f0" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">发送合并的 SQL 事务批处理 (INSERT / UPDATE)</text>
+  </g>
+
+  <!-- Note 3 -->
+  <g transform="translate(660, 580)">
+    <rect width="280" height="60" rx="6" fill="#064e3b" stroke="#10b981" stroke-width="1" filter="url(#shadow)"/>
+    <path d="M 0 10 L 15 0 L 0 10 L 0 60 Z" fill="#10b981" opacity="0.5"/>
+    <text x="140" y="25" fill="#a7f3d0" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">同一个本地 ACID 事务</text>
+    <text x="140" y="45" fill="#6ee7b7" font-family="sans-serif" font-size="13" text-anchor="middle">要么同时成功，要么同时回滚</text>
+  </g>
+
+</svg>
+
 
 为什么必须共享同一个changeTracker：
 
