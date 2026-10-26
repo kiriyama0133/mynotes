@@ -86,11 +86,6 @@ DDD的基础模型包括实体、聚合根、通用拓展与类型定义、结�
 
 传统的架构中，持久层是直接把实体类与数据库表绑定，一个模型打到底，但在本项目中，持久化相关的职责被精细地切分在不同层级中：
 
-```
-│ Diagram exceeds terminal width (393 > 119 cols)
-│ Displayed as code block. Widen terminal to view inline.
-```
-
 
 ```mermaid
 flowchart TD
@@ -595,14 +590,498 @@ flowchart TD
 
 这个在其他笔记里看，请查看[[MassTransitService收件箱模式]]。
 
+我们继续来扯读写分离。读写分离在实际软件工程中，通常分为两个阶段演进：
+
+1. 第一阶段：应用代码级读写分离（我们刚刚在项目中落地的模式）
+2. 第二阶段：物理数据库级主从分离与异构投影（架构的高并发终局）
+
+很多团队以为“读写分离”必须先买两台数据库服务器。其实不然，在同一个物理数据库上把代码层的读写模型彻底分开，就能解决80% 的性能瓶颈。
 
 
+```mermaid
+flowchart TD
+    %% 顶部的统一数据库
+    DB[("同一个 SQL Server 数据库")]
+    
+    %% 使用不可见连线把数据库放在上方居中
+    WritePath ~~~ DB
+    DB ~~~ ReadPath
+
+    %% 左侧：写路径 (Command)
+    subgraph WritePath["【写路径 (Command)】"]
+        direction TB
+        W_Tech["技术栈：EF Core + Outbox"]
+        W_Model["模型：富领域聚合根 (Account)"]
+        W_Flow["流程：查聚合 -> 业务规则校验<br/>-> 产生流水 -> Commit"]
+        
+        W_Tech --- W_Model --- W_Flow
+    end
+
+    %% 右侧：读路径 (Query)
+    subgraph ReadPath["【读路径 (Query)】"]
+        direction TB
+        R_Tech["技术栈：Dapper 原生 SQL"]
+        R_Model["模型：扁平只读 DTO"]
+        R_Flow["流程：单次复合查询 -> 格式化<br/>-> 立即返回"]
+        
+        R_Tech --- R_Model --- R_Flow
+    end
+
+    %% 连接线与注释
+    WritePath -->|"写事务：锁行、强校验"| DB
+    DB -->|"读会话：WITH NOLOCK、极速出"| ReadPath
+
+    %% 样式美化（可选，让图表看起来更专业）
+    style DB fill:#f9f9f9,stroke:#333,stroke-width:2px
+    style WritePath fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+    style ReadPath fill:#e3f2fd,stroke:#2196f3,stroke-width:2px
+```
+
+为什么 Dapper 能做到比纯 EF Core 快数倍，AccountQueries.cs:22-42中的轮询：
+
+
+```cs
+/// <summary>
+/// 基于 Dapper 的高性能账户只读查询实现（CQRS Read Side）.
+/// 绕过领域聚合与实体追踪，直接执行原生 SQL 查询出只读 DTO.
+/// </summary>
+public sealed class AccountQueries(GenocsContext context) : IAccountQueries
+{
+    private readonly GenocsContext _context = context ?? throw new ArgumentNullException(nameof(context));
+
+    public async Task<AccountDetailsDto?> GetAccountDetailsAsync(Guid accountId, CancellationToken cancellationToken = default)
+    {
+        // 关系型数据库环境（如 SQL Server）：使用 Dapper 执行原生 SQL 高速读取
+        if (_context.Database.IsRelational())
+        {
+            const string sql = @"
+                SELECT a.Id AS AccountId
+                FROM Account a WITH (NOLOCK)
+                WHERE a.Id = @AccountId;
+
+                SELECT 'Credit' AS Description, Amount, TransactionDate
+                FROM Credit WITH (NOLOCK)
+                WHERE AccountId = @AccountId
+
+                UNION ALL
+
+                SELECT 'Debit' AS Description, Amount, TransactionDate
+                FROM Debit WITH (NOLOCK)
+                WHERE AccountId = @AccountId
+                ORDER BY TransactionDate ASC;";
+
+            var connection = _context.Database.GetDbConnection();
+            if (connection.State != ConnectionState.Open)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            var command = new CommandDefinition(sql, new { AccountId = accountId }, cancellationToken: cancellationToken);
+            using var multi = await connection.QueryMultipleAsync(command);
+
+            var accountExists = await multi.ReadSingleOrDefaultAsync<Guid?>();
+            if (accountExists == null)
+            {
+                return null;
+            }
+
+            var rawTransactions = (await multi.ReadAsync<RawTransactionRecord>()).ToList();
+
+            decimal balance = 0;
+            var transactions = new List<TransactionItemDto>(rawTransactions.Count);
+            foreach (var item in rawTransactions)
+            {
+                if (string.Equals(item.Description, "Credit", StringComparison.OrdinalIgnoreCase))
+                {
+                    balance += item.Amount;
+                }
+                else if (string.Equals(item.Description, "Debit", StringComparison.OrdinalIgnoreCase))
+                {
+                    balance -= item.Amount;
+                }
+
+                transactions.Add(new TransactionItemDto(item.Description, item.Amount, item.TransactionDate));
+            }
+
+            return new AccountDetailsDto(accountId, balance, transactions);
+        }
+
+        // 非关系型（例如 EF Core InMemory 单元测试）环境的平滑兼容
+        var account = await _context.Accounts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken);
+
+        if (account == null)
+        {
+            return null;
+        }
+
+        var credits = await _context.Credits
+            .AsNoTracking()
+            .Where(c => c.AccountId == accountId)
+            .ToListAsync(cancellationToken);
+
+        var debits = await _context.Debits
+            .AsNoTracking()
+            .Where(d => d.AccountId == accountId)
+            .ToListAsync(cancellationToken);
+
+        var fallbackTransactions = credits
+            .Select(c => new TransactionItemDto("Credit", c.Amount.ToMoney().ToDecimal(), c.TransactionDate))
+            .Concat(debits.Select(d => new TransactionItemDto("Debit", d.Amount.ToMoney().ToDecimal(), d.TransactionDate)))
+            .OrderBy(t => t.TransactionDate)
+            .ToList();
+
+        decimal fallbackBalance = fallbackTransactions.Sum(t => t.Description == "Credit" ? t.Amount : -t.Amount);
+
+        return new AccountDetailsDto(accountId, fallbackBalance, fallbackTransactions);
+    }
+
+    private sealed record RawTransactionRecord(string Description, decimal Amount, DateTime TransactionDate);
+}
+```
+
+QueryMultipleAsync绕过领域聚合根和仓储，专门用于高频读取，  复合查询：把查账户主表和流水表合并为一条 SQL，网络往返（Round-Trip）从 2 次减为 1 次；WITH (NOLOCK) 脏读提示：在 SQL Server 中，写事务默认会给行或页加排他锁（X 锁）。普通 SELECT 会被阻塞挂起。加上 WITH (NOLOCK)后，读请求不再等待锁释放，彻底杜绝读写互锁； 零 ChangeTracker 开销：纯 ADO.NET 流式反序列化为只读 record，不产生多余的对象状态树。
+
+因为我们已经把接口拆成了 IAccountRepository 和 IAccountQueries，改造连接串变得轻而易举：
+
+```
+1. 配置两个独立的连接字符串（appsettings.json）：
+"ConnectionStrings": {
+  "MasterConnection": "Server=sql-master;Database=dddotNet;...",
+  "SlaveConnection": "Server=sql-slave-readonly;Database=dddotNet;..."
+}
+
+2. 依赖注入时分别绑定：
+  • GenocsContext（EF Core 写库）绑定 MasterConnection；
+  • AccountQueries（Dapper 读库）连接 SlaveConnection。
+3. 业务层和用例代码仍然一行都不用改！
+```
+
+架构闭环：基于 MassTransit Outbox 的“异构读模型投影”：
+
+最极致的读写分离，甚至连关系型数据库的从库都不用，而是异构存储，写操作：由 EF Core 写 SQL Server，保证账户账目的强一致性；读模型（Read Projection）：
+
+• 这时，我们刚刚配置的 MassTransit Outbox 派上了巨大用场
+• 当出款/存款成功后，Outbox 投递了 DepositCompleted 事件；
+• 后台服务（Worker）监听到这个事件，直接把最新的账户信息更新到 Redis 或 Elasticsearch中！
+
+这时候需要关注一个叫做主从延迟的问题：
+
+前端读请求AccountQueries 直接从 Redis（几毫秒极速读取） 或 Elasticsearch（秒级复杂搜索） 取出组装好的 DTO 返回，主库完全零读压力。用户存了 100块钱，提交成功后页面自动刷新，一查余额，发现钱居然没多？（因为主库写完了，从库还没同步过来，用户读到了旧副本）。
+
+可以实现写后回传，存钱接口在执行成功时，直接把最新的 CurrentBalance 放在 HTTP Response里带回前端，前端用本地数据更新页面。或者短暂强制读主库。
+
+最后可以看出的是，领域层和聚合根都是专门为了写操作而生的，读操作不需要经过聚合根，可以直接在用例层直接调查询服务直奔数据库查出DTO。读操作不改变任何业务状态，所以也不需要做任何防御和规则校验。强行走聚合根，纯属浪费 CPU 和内存。
+
+读用例（GetAccountDetails.cs）：
+
+```cs
+/// <summary>
+/// 获取账户详情用例（CQRS 读路径）.
+/// 通过 IAccountQueries 直接读取扁平只读模型，完全绕过领域聚合根与 EF Core 仓储.
+/// </summary>
+public sealed class GetAccountDetails(IOutputPort outputHandler, IAccountQueries accountQueries) : IUseCase<GetAccountDetailsInput>
+{
+    private readonly IOutputPort _outputHandler = outputHandler ?? throw new ArgumentNullException(nameof(outputHandler));
+    private readonly IAccountQueries _accountQueries = accountQueries ?? throw new ArgumentNullException(nameof(accountQueries));
+
+    public async Task ExecuteAsync(GetAccountDetailsInput input, CancellationToken cancellationToken = default)
+    {
+        var accountDto = await _accountQueries.GetAccountDetailsAsync(input.AccountId, cancellationToken);
+
+        if (accountDto == null)
+        {
+            _outputHandler.NotFound($"The account {input.AccountId} does not exist or is not processed yet.");
+            return;
+        }
+
+        var transactions = accountDto.Transactions
+            .Select(t => new Transaction(t.Description, t.Amount, t.TransactionDate))
+            .ToList();
+
+        GetAccountDetailsOutput output = new GetAccountDetailsOutput(
+            accountDto.AccountId,
+            accountDto.CurrentBalance,
+            transactions);
+
+        _outputHandler.Default(output);
+    }
+}
+```
+
+读操作真的很清晰，我们来看看写操作呢。
+
+写操作在Clean Archticture中 + DDD 中，需要绝对可信，任何一个写操作比如充值、提现、开户、转账，都需要按照6个步骤来运转：
+
+1. 输入校验和便捷转换： Controller -> DepositInput -> 值对象；
+2. 然后加载聚合根，IAccountRepository.GetAsync；
+3. 聚合根业务决策与规则守护：account.Deposit / Withdraw 校验不变性；
+4. 状态变更追踪：EF Core ChangeTracker 标记 Added/Modified；
+5. 事件借壳入库：`_serviceBus.PublishEventAsync 进入 Outbox`；
+6. 原子事务提交： `_unitOfWork.SaveAsync` 一揽子提交；
+7. 视图呈现输出：Presenter 输出给前端。
+
+我们来看当前项目的 Deposit.cs：
+
+```cs
+   public async Task ExecuteAsync(DepositInput input, CancellationToken cancellationToken = default)
+    {
+        // 【步骤 1 & 2：从档案库提取聚合根】
+        // 仓储去数据库里把账户记录以及历史流水全部加载出来，在内存中还原出完整的富领域对象
+        var account = await _accountRepository.GetAsync(input.AccountId, cancellationToken);
+        if (account == null)
+        {
+            _outputHandler.Error($"The account {input.AccountId} does not exist.");
+            return;
+        }
+
+        // 【步骤 3：聚合根内部进行业务决策（核心领域层）】
+        // 注意：用例本身不做业务计算！它把钱交给 account 自己去算、去校验！
+        // 如果是 Withdraw（取款），account 会在这里检查余额够不够，透支直接被拦截
+        var credit = account.Deposit(_entityFactory, input.Amount);
+
+        // 【步骤 4：挂入仓储与变更追踪】
+        await _accountRepository.UpdateAsync(account, credit, cancellationToken);
+
+        // 【步骤 5：发布事件（进入我们刚刚配置的 MassTransit Outbox）】
+        // 此时不发网络请求，而是将待发事件作为一条记录放进同一个 DbContext 内存中
+        await _serviceBus.PublishEventAsync(new DepositCompleted() { ... }, cancellationToken);
+
+        // 【步骤 6：本地数据库事务原子落盘】
+        // 触发 BEGIN TRANSACTION，业务流水 + Outbox 消息同时写入 SQL Server
+        await _unitOfWork.SaveAsync(cancellationToken);
+
+        // 【步骤 7：通过 Presenter 驱动返回】
+        _outputHandler.Default(new DepositOutput(credit, account.GetCurrentBalance()));
+    }
+```
+
+`_accountRepository` 是依赖注入进来的，实现是namespace dddotNet.Infrastructure.PersistenceLayer.SQLServer.Repositories;中的AccountRepository类：
+
+```cs
+namespace dddotNet.Infrastructure.PersistenceLayer.SQLServer.Repositories;
+
+public sealed class AccountRepository(GenocsContext context) : IAccountRepository
+{
+    private readonly GenocsContext _context = context ?? throw new ArgumentNullException(nameof(context));
+
+    public async Task AddAsync(IAccount account, ICredit credit, CancellationToken cancellationToken = default)
+    {
+        await _context.Accounts.AddAsync((Account)account, cancellationToken);
+        await _context.Credits.AddAsync((Credit)credit, cancellationToken);
+    }
+
+    public async Task DeleteAsync(IAccount account, CancellationToken cancellationToken = default)
+    {
+        var accountEntity = (Account)account;
+
+        // 纳入 EF Core 变更追踪（由 UnitOfWork.SaveAsync 原子提交事务，杜绝提前物理删除）
+        var credits = await _context.Credits
+            .Where(e => e.AccountId == accountEntity.Id)
+            .ToListAsync(cancellationToken);
+
+        var debits = await _context.Debits
+            .Where(e => e.AccountId == accountEntity.Id)
+            .ToListAsync(cancellationToken);
+
+        _context.Credits.RemoveRange(credits);
+        _context.Debits.RemoveRange(debits);
+        _context.Accounts.Remove(accountEntity);
+    }
+
+    public async Task<IAccount?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var account = await _context.Accounts
+            .SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
+
+        if (account == null)
+        {
+            return null;
+        }
+
+        // 纯异步查询流水，彻底消除线程池同步阻塞，并透传 cancellationToken
+        var credits = await _context.Credits
+            .Where(e => e.AccountId == id)
+            .ToListAsync(cancellationToken);
+
+        var debits = await _context.Debits
+            .Where(e => e.AccountId == id)
+            .ToListAsync(cancellationToken);
+
+        account.Load(credits, debits);
+
+        return account;
+    }
+
+    public async Task UpdateAsync(IAccount account, ICredit credit, CancellationToken cancellationToken = default)
+        => await _context.Credits.AddAsync((Credit)credit, cancellationToken);
+
+    public async Task UpdateAsync(IAccount account, IDebit debit, CancellationToken cancellationToken = default)
+        => await _context.Debits.AddAsync((Debit)debit, cancellationToken);
+}
+
+```
+
+销户操作与销户事件被牢牢锁定在同一个本地 ACID事务中，杜绝了“数据已删但事件丢失”或“事件发了但数据未删”；
+
+在面向对象（C#）和关系型数据库（SQL Server）之间存在著名的“对象-关系阻抗失配（Object-Relational ImpedanceMismatch）”。这个 GenocsContext 做的，就是把纯洁优雅的 DDD 领域模型，无缝翻译成冰冷死板的数据库二维表。
+
+我们在领域层使用的是强类型的值对象（Value Object），而不是裸露的基础类型：
+
+• 客户身份证不是 string，而是 SSN；
+• 客户姓名不是 string，而是 Name；
+• 账户流水金额不是 decimal，而是 PositiveMoney（保证绝对非负）。
+
+ SQL Server 根本不认识 C# 的 PositiveMoney 类，数据库列只认 DECIMAL(18,2)！上下文的作用：
+ 
+```cs
+   modelBuilder.Entity<Credit>()
+        .Property(b => b.Amount)
+        .HasConversion(
+            v => v.ToMoney().ToDecimal(),  // 写入数据库时：把 PositiveMoney 对象转为 decimal 存入列
+            v => new PositiveMoney(v));     // 从数据库读出时：把 decimal 自动 new 成 PositiveMoney 实体
+```
+
+最后要记住的是用例之间不能相互依赖，否则这种做法在架构上被严格定性为反模式（Anti-Pattern）。我们要做的是让每个用例就像一条独立的垂直业务切片，如果用例之间相调用，就是牵一发动全身了；每个用例都有自己的输入输出端口，如果用例A使用用例B，B的`_outputHandler.Default(...)` 就会直接冲垮 A 的输出流，导致web控制器拿到错误的viewModel。
+
+我们一定要保证CQRS读写边界的纯洁。
 ## 消息队列与弹性通信
 
 • Rebus.RabbitMq (10.1.1)：轻量级服务总线框架 Rebus 的 RabbitMQ 传输实现，用于事件驱动和异步解耦。
 • Azure.Messaging.ServiceBus (7.20.1) / Microsoft.Azure.ServiceBus (5.2.0)：Azure 服务总线集成（在 Worker 中）。
 • Microsoft.Extensions.Http.Polly (10.0.7)：提供 HTTP 请求重试、熔断与超时等弹性策略。
 • Refit.HttpClientFactory (10.1.6)：类型安全的声明式 REST HTTP 客户端。
+
+在现代的云原生和微服务架构中，服务间的通信分为两张网，一个是异步的网，（消息队列 Message Queue）：负责跨服务解耦、削峰填谷、事件驱动；一个是同步的网，HTTP远程调用，负责实时数据拉取，但必须配备弹性策略（Polly +Refit）作为保护措施，防止网络雪崩。 
+
+这个模板里，消息队列流转覆盖了契约定义、事件发布到异步消费的完整闭环。在用例层，业务代码通过注入抽象接口 IServiceBusClient 发布事件：
+
+```cs
+await _serviceBus.PublishEventAsync(new DepositCompleted { ... }, cancellationToken);
+```
+
+底层正是由我们前面配置的 MassTransit Outbox 拦截并伴随本地数据库事务原子落盘，随后由后台线程送入 RabbitMQ。
+
+消费者Worker时独立常驻的进程消费。打开独立进程项目 dddotNet.Worker， 查看处理器 RegistrationCompletedHandler.cs：
+
+```cs
+    public class RegistrationCompletedHandler(ILogger logger) : IHandleMessages<RegistrationCompleted>
+    {
+        public async Task Handle(RegistrationCompleted message)
+        {
+            _logger.LogInformation("用户开户成功，异步执行邮件发送与风控，CreditId: {0}", message.CreditId);
+        }
+    }
+```
+
+核心价值：用户的开户请求在 WebApi 几十毫秒内就响应了；发邮件、建积分档案等耗时操作全部丢给 Worker在后台慢慢消费，系统抗洪能力直接上了一个台阶。
+
+同步通信支柱：弹性通信（Polly + Refit），当微服务不得不通过 HTTP 同步调用第三方外部服务（如银行网关、第三方订单服务）时，网络可能会抖动、超时、甚至下游直接宕机。项目使用了 Refit（声明式客户端） + Polly 来保证 HTTP 调用
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 900" width="100%" height="100%">
+  <defs>
+    <!-- 箭头标记 -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8892b0" />
+    </marker>
+
+    <!-- 卡片阴影效果 -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+    
+    <!-- Polly 管道外框阴影 -->
+    <filter id="glow" x="-5%" y="-5%" width="110%" height="110%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- 背景网格 -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="100%" height="100%" fill="#0f172a" />
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- 1. 业务代码发起请求 -->
+  <g transform="translate(200, 50)">
+    <rect width="400" height="100" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="2" filter="url(#shadow)"/>
+    <text x="200" y="40" fill="#e2e8f0" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">业务代码发起 HTTP 请求</text>
+    <text x="200" y="70" fill="#94a3b8" font-family="monospace" font-size="16" text-anchor="middle">(IOrderApi.GetOrdersAsync)</text>
+  </g>
+
+  <!-- 箭头 1 -->
+  <line x1="400" y1="150" x2="400" y2="190" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- 2. Bulkhead 舱壁隔离 -->
+  <g transform="translate(200, 200)">
+    <rect width="400" height="100" rx="12" fill="#1e293b" stroke="#f59e0b" stroke-width="2" filter="url(#shadow)"/>
+    <text x="200" y="40" fill="#fbbf24" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">1. Bulkhead 舱壁隔离</text>
+    <text x="200" y="70" fill="#94a3b8" font-family="sans-serif" font-size="16" text-anchor="middle">(限流隔离，防止打爆本服务线程池)</text>
+  </g>
+
+  <!-- 箭头 2 -->
+  <line x1="400" y1="300" x2="400" y2="330" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- 3. Polly 弹性策略护甲管道 (外框) -->
+  <g transform="translate(150, 340)">
+    <!-- Polly 外框背景与边框 -->
+    <rect width="500" height="310" rx="16" fill="#172033" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="8,4" opacity="0.8" filter="url(#glow)"/>
+    <rect width="150" height="30" x="25" y="-15" fill="#8b5cf6" rx="15" />
+    <text x="100" y="5" fill="#ffffff" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Polly 护甲管道</text>
+
+    <!-- 管道内部箭头 -->
+    <line x1="250" y1="30" x2="250" y2="60" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
+
+    <!-- 3.1 AdvancedCircuitBreaker -->
+    <g transform="translate(50, 70)">
+      <rect width="400" height="90" rx="8" fill="#2a1b2d" stroke="#ef4444" stroke-width="2" filter="url(#shadow)"/>
+      <text x="200" y="35" fill="#fca5a5" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle">2. AdvancedCircuitBreaker 熔断器</text>
+      <text x="200" y="60" fill="#94a3b8" font-family="sans-serif" font-size="14" text-anchor="middle">(下游挂了立即熔断跳闸，快速失败)</text>
+    </g>
+
+    <!-- 管道内部箭头 -->
+    <line x1="250" y1="160" x2="250" y2="190" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
+
+    <!-- 3.2 WaitAndRetry -->
+    <g transform="translate(50, 200)">
+      <rect width="400" height="90" rx="8" fill="#142d25" stroke="#10b981" stroke-width="2" filter="url(#shadow)"/>
+      <text x="200" y="35" fill="#6ee7b7" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle">3. WaitAndRetry 指数退避重试</text>
+      <text x="200" y="60" fill="#94a3b8" font-family="sans-serif" font-size="14" text-anchor="middle">(网络闪断自动 1s, 2s, 4s 退避重试)</text>
+    </g>
+  </g>
+
+  <!-- 箭头 3 -->
+  <line x1="400" y1="650" x2="400" y2="690" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- 4. 下游外部微服务 -->
+  <g transform="translate(200, 700)">
+    <rect width="400" height="100" rx="12" fill="#1e293b" stroke="#ec4899" stroke-width="2" filter="url(#shadow)"/>
+    <text x="200" y="40" fill="#fbcfe8" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">下游外部微服务</text>
+    <text x="200" y="70" fill="#94a3b8" font-family="monospace" font-size="16" text-anchor="middle">(External Order WebService)</text>
+  </g>
+
+</svg>
+
+这里用了声明式HTTP客户端Refit，传统写法需要 new HttpClient、手动拼接 URL、手动序列化 JSON、判断 StatusCode，代码极其冗长。而在本项目中，查看 IOrderApi.cs：
+
+
+```cs
+    [Headers("Accept: application/json", "Authorization: Bearer xxxx")]
+    public interface IOrderApi
+    {
+        [Get("/orders")]
+        Task<HttpResponseMessage> GetOrdersAsync([AliasAs("page")] int pageIndex, [AliasAs("size")] int pageSize);
+    }
+
+```
+
+如同写本地接口一样声明远程 API，编译时自动生成高性能的 REST 客户端。
+
 
 ## API 与运行宿主（API Management & Host）
 

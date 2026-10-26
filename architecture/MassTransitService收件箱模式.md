@@ -445,3 +445,68 @@ sequenceDiagram
 正是因为有了 ChangeTracker 这个内存中转站，我们才能在业务上保持优雅解耦（业务代码只需安心调用 Update 和Publish），而在技术底层却能神不知鬼不觉地把所有的增删改和待发消息“打包捆绑”**在同一个事务里交付数据库。
 
 
+究其根本，它是专门为EF CORE以及各类主流ORM定制的协同组件，核心目的是将不可靠的网络请求降级为可靠的数据库表记录。我们来看看这个“事务表”到底长什么样，以及为什么同一个本地 ACID 事务能把它们牢牢绑在一起。
+
+在前面的配置中，我们在 GenocsContext.cs:19-21 里加入了三行映射：
+
+
+```cs
+    modelBuilder.AddInboxStateEntity();
+    modelBuilder.AddOutboxMessageEntity();
+    modelBuilder.AddOutboxStateEntity();
+```
+
+MassTransit 会在数据库里生成三张协同工作的表，其中最核心、最关键的正是 OutboxMessage（发件箱消息表）。它本质上就是一张持久化到磁盘的“离线待发信件箱”，主要包含以下字段：
+
+
+|字段名 (Field)|数据类型|核心作用|
+|---|---|---|
+|**`SequenceNumber`** (主键)|`bigint` / `long`|**自增主键**。后台 Worker 依据它来**排序和分批轮询**，保证消息按入队顺序发送。|
+|**`MessageId`**|`Guid`|**消息唯一标识**。用于消费者端的**幂等去重**，确保同一条消息不会被重复处理。|
+|**`EnqueueTime`**|`DateTime?`|**入队时间**。记录消息被挂载到 `ChangeTracker` 的时刻。|
+|**`SentTime`**|`DateTime`|**发送时间**。记录消息成功投递到消息代理（如 RabbitMQ）的时间。|
+|**`Headers`**|`text` / `json`|**消息头**。存储路由键、 CorrelationId 等元数据，影响消息的路由和追踪。|
+|**`Body` / `Payload`**|`text` / `jsonb`|**消息体**。业务事件的**序列化内容**（通常是 JSON），是消费者真正需要的数据。|
+|**`ContentType`**|`varchar(256)`|**内容类型**。标明 `Body` 的序列化格式（如 `application/json`）。|
+|**`MessageType`**|`text`|**消息类型**。存储事件的**完整类型名称**（如 `Contracts.Events.DepositCompleted`），供消费者反序列化时识别。|
+|**`DestinationAddress`**|`varchar(256)`|**目标地址**。指定消息将被发送到的交换机或队列地址。|
+
+辅助表：OutboxState 与 InboxState
+
+• OutboxState（发信锁与进度表）：记录当前发件箱有哪些批次正在被后台线程投递，防止多实例部署时两个 Pod抢着发同一批消息。
+• InboxState（收件箱幂等表）：位于消费者端，记录已经处理过的消息 ID，防止下游因网络原因收到重复消息。
+
+为什么本地 ACID 事务能让它们“要么同时成功，要么同时回滚”？这是由关系型数据库（如 SQL Server）底层的“预写日志机制（WAL - Write-Ahead Logging）”所决定的：
+
+
+```sql
+
+-- 当你在 C# 里调用 await _unitOfWork.SaveAsync() 时
+-- SQL Server 底层真实执行的批处理指令如下：
+
+BEGIN TRANSACTION; -- 开启本地 ACID 事务
+
+	-- 动作 1：写入账户流水业务表
+	INSERT INTO [Credit] ([Id], [AccountId], [Amount], [TransactionDate])
+	VALUES ('c1-xxx', 'a1-xxx', 100.00, '2026-10-25');
+
+	-- 动作 2：写入发件箱消息表
+	INSERT INTO [OutboxMessage] ([MessageId], [MessageType], [Body], ...)
+	VALUES ('m1-xxx', 'DepositCompleted', '{"AccountId":"a1-xxx","Amount":100}', ...);
+
+-- 如果两条都成功，执行 COMMIT，两张表同时永久落盘
+COMMIT TRANSACTION;
+
+-- 如果任意一条失败（例如报错、断电、唯一索引冲突），执行 ROLLBACK：
+-- SQL Server 事务管理器会依靠 UNDO 日志，将刚刚写入的两张表数据统统抹去！
+ROLLBACK TRANSACTION;
+```
+
+底层回滚原理：
+
+
+表本身没有魔法，魔法来自于数据库的事务日志（Transaction Log）：
+
+在事务 COMMIT 之前，任何写入都不会真正固化，而是作为“未决变更”记录在数据库的日志缓冲区中。 一旦中途发生任何异常（比如保存 Credit 时外键约束失败，或者保存 OutboxMessage 时字段截断）：数据库引擎会立即启动 ROLLBACK（回滚），依靠日志里的反向操作（UNDO），把刚刚为 Credit 和 OutboxMessage分配的数据页物理还原！
+
+同一个连接（Connection）与事务通道（SqlTransaction）：因为 Credit 表和 OutboxMessage 表都在同一个数据库实例、同一个数据库连接、同一个 GenocsContext 下；所以 EF Core 可以理所当然地把它们包装在同一个 BEGIN TRANSACTION 作用域内。

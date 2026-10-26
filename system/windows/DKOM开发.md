@@ -73,8 +73,6 @@ CHAR szName[16] = { 0 };
 RtlCopyMemory(szName, (PUCHAR)pCurrent + OFFSET_IMAGE_FILE_NAME, 15);
 ```
 
-
-
 ## 读取进程
 
 我们都知道windbg有个命令!process 0 0，这个我们经常用来查看所有会话里的进程，要实现这个功能，我们也可以使用dkom里的开发。每个windows版本的偏移量不同，所以开发前务必知道偏移量大小，才能操作链表。
