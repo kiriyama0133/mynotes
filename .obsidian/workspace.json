@@ -64,7 +64,7 @@
             }
           }
         ],
-        "currentTab": 2
+        "currentTab": 3
       }
     ],
     "direction": "vertical"
@@ -142,7 +142,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "plugin/Postgresql的特性和常用到的知识图谱.md",
+                "file": "architecture/MassTransitService收件箱模式.md",
                 "collapseAll": true,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -204,7 +204,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "plugin/Postgresql的特性和常用到的知识图谱.md",
+                "file": "architecture/MassTransitService收件箱模式.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -261,10 +261,10 @@
       "obsidian-git:Open Git source control": false
     }
   },
-  "active": "72cc9a4316c596f4",
+  "active": "7515f455838342c4",
   "lastOpenFiles": [
-    "architecture/MassTransitService收件箱模式.md",
     "plugin/Postgresql的特性和常用到的知识图谱.md",
+    "architecture/MassTransitService收件箱模式.md",
     "rambling/moduix-vue跳过预构件导致裸ESM瀑布流请求.md",
     "plugin/KeyCloak的客户端安全策略和部分业务.md",
     "rambling/碎碎念-计算性.md",

@@ -762,18 +762,7 @@ services.AddMassTransitWithOutbox(builder.Configuration);
 
 ### 内存追踪变更器
 
- 如果没有 ChangeTracker（内存变更追踪器），上述的 Outbox 机制、工作单元以及整洁架构里的事务一致性，根本无法成立。
-
-这个也是ef core的关键部分，下面我们拆解一下它是如何工作的：
-
-你可以把 DbContext 想象成去超市购物，而 ChangeTracker 就是你的“购物车”：
-
-  • 当你挑选商品放进购物车时（调用 AddAsync / 修改属性 / 发送事件），你根本还没有付钱（没有发送任何
-  SQL，也没有向网络发包）。
-  • 此时所有的变化，都只是放在这辆购物车里的物品，每个物品上面贴了一张“操作便签”（状态标记）。
-  • 只有当你推着购物车到收银台，执行 SaveChangesAsync()
-  时，收银台（数据库）才一口气把车里所有的东西打在一张账单上完成结算（事务提交）。
-
+ 如果没有 ChangeTracker（内存变更追踪器），上述的 Outbox 机制、工作单元以及整洁架构里的事务一致性，根本无法成立。这个也是ef core的关键部分，下面我们拆解一下它是如何工作的：
 
 ef core内部，每一个被管理的对象，都会被包装为一个EntityEntry，ChangeTracker会为其维护一个状态叫做EntiryState
 
@@ -903,8 +892,6 @@ EntityState 的 5 种状态
 
 </svg>
 
-
-为什么必须共享同一个changeTracker：
 
 这里有一个至关重要的底层设计 —— 依赖注入的生命周期（Scoped），在 ASP.NET Core 中，每次 HTTP 请求都会创建一个独立的生命周期作用域（Scope）。仓储 AccountRepository 注入的 GenocsContext 是这个 Scope 里的实例，MassTransit Outbox 拿到的也是同一个 GenocsContext 实例，因此，它们共享了同一台 ChangeTracker。
 
