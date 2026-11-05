@@ -1,6 +1,11 @@
-# 基于资源字典实现主题切换
-
-> **核心原理**：WPF 的主题切换通过动态替换 `Application.Resources.MergedDictionaries` 中的资源字典实现。所有使用 `DynamicResource` 绑定的控件会自动更新。
+---
+date: 2026-07-21
+tags:
+  - xaml
+  - wpf
+  - csharp
+---
+WPF 的主题切换通过动态替换 `Application.Resources.MergedDictionaries` 中的资源字典实现。所有使用 `DynamicResource` 绑定的控件会自动更新
 
 ---
 

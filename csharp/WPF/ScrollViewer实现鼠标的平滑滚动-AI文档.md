@@ -1,3 +1,11 @@
+---
+date: 2025-08-02
+tags:
+  - csharp
+  - wpf
+  - schroll
+---
+
 # WPF ScrollViewer 实现鼠标的平滑滚动
 
 > [!abstract] 概述

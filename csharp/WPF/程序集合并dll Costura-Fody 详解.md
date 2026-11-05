@@ -1,9 +1,10 @@
-# 程序集合并（Costura.Fody）详解
-
-## 什么是程序集合并
-
-​	程序集合并（Assembly Merging）是一种将多个.NET程序集（DLL文件）合并到单个可执行文件中的技术。Costura.Fody是.NET生态系统中最流行的程序集合并工具之一，它通过Fody框架在编译时自动将依赖的DLL嵌入到主程序集中，实现"单文件部署"的目标。
-
+---
+date: 2025-08-21
+tags:
+  - csharp
+  - dll
+---
+序集合并（Assembly Merging）是一种将多个.NET程序集（DLL文件）合并到单个可执行文件中的技术。Costura.Fody是.NET生态系统中最流行的程序集合并工具之一，它通过Fody框架在编译时自动将依赖的DLL嵌入到主程序集中，实现"单文件部署"的目标。
 ## 工作原理
 
 Costura.Fody基于Fody框架工作，Fody是一个.NET的编译时织入（Compile-time Weaving）工具。其工作流程如下：

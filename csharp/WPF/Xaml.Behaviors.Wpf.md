@@ -1,11 +1,14 @@
+---
+date: 2025-10-08
+tags:
+  - wpf
+  - csharp
+  - xaml
+  - behaviors
+---
+**XAML Behaviors** 提供了一种简单易用的方法，能以最少的代码为 **Windows UWP/WPF** 应用程序添加**常用和可重复使用的交互性**。但是Microsoft XAML Behaviors包除了提供常用的**XAML Behaviors**之外，还提供了一些**Trigger**（触发器）以及**Trigger**对应的**Action**（动作）。
 
-
-**XAML Behaviors** 提供了一种简单易用的方法，能以最少的代码为 **Windows UWP/WPF** 应用程序添加**常用和可重复使用的交互性**。
-
-但是Microsoft XAML Behaviors包除了提供常用的**XAML Behaviors**之外，还提供了一些**Trigger**（触发器）以及**Trigger**对应的**Action**（动作）。
-
-可以通过一个最简单的示例来感受一下
-首先我们引用**Microsoft.Xaml.Behaviors.Wpf**包，然后添加如下的代码。
+可以通过一个最简单的示例来感受一下，首先我们引用**Microsoft.Xaml.Behaviors.Wpf**包，然后添加如下的代码。
 
 在下面的代码中，我们放置了一个按钮，然后为按钮**添加了XAML Behavior**，当按钮触发Click事件时，调用ChangPropertyAction去改变控件的背景颜色
 
