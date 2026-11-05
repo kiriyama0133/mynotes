@@ -8,45 +8,45 @@
         "type": "tabs",
         "children": [
           {
-            "id": "56782ca05c0ed9d4",
+            "id": "9f44a3e373f077ea",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "components/状态机驱动的ui组件库arkui.md",
+                "file": "plugin/KeyCloak的客户端安全策略和部分业务.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "状态机驱动的ui组件库arkui"
+              "title": "KeyCloak的客户端安全策略和部分业务"
             }
           },
           {
-            "id": "7fda29aa38431c11",
+            "id": "83ef3d881512fcdc",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "components/关于评论等组件防止XSS攻击的实现和思考.md",
+                "file": "Vue/服务端渲染SSR的理解.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "关于评论等组件防止XSS攻击的实现和思考"
+              "title": "服务端渲染SSR的理解"
             }
           },
           {
-            "id": "ab1e22d64cfb376f",
+            "id": "2ed2623670da43aa",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "network/探究SocketIO事件驱动的双向通信库.md",
+                "file": "architecture/初识CleanArchitecture架构项目.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "探究SocketIO事件驱动的双向通信库"
+              "title": "初识CleanArchitecture架构项目"
             }
           }
         ],
@@ -128,7 +128,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "architecture/服务器驱动UI的SDUI范式讲解之Flet.md",
+                "file": "architecture/初识CleanArchitecture架构项目.md",
                 "collapseAll": true,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -190,7 +190,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "network/探究SocketIO事件驱动的双向通信库.md",
+                "file": "architecture/初识CleanArchitecture架构项目.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -247,38 +247,39 @@
       "obsidian-git:Open Git source control": false
     }
   },
-  "active": "ab1e22d64cfb376f",
+  "active": "2ed2623670da43aa",
   "lastOpenFiles": [
-    "architecture/服务器驱动UI的SDUI范式讲解之Flet.md",
-    "network/探究SocketIO事件驱动的双向通信库.md",
-    "css/gsap.md",
-    "components/关于评论等组件防止XSS攻击的实现和思考.md",
-    "architecture/MassTransitService收件箱模式.md",
-    "architecture/SaaS与PaaS与IaaS模式.md",
-    "components/状态机驱动的ui组件库arkui.md",
+    "Vue/服务端渲染SSR的理解.md",
+    "architecture/初识CleanArchitecture架构项目.md",
+    "Vue/vue3/v-model数据绑定分析.md",
+    "Vue/vue3/Vue首屏性能优化组件.md",
+    "Vue/vue3/Vue路由懒加载.md",
+    "Vue/vue3/Vue路由History模式分析.md",
+    "Vue/vue3/Vue路由Hash模式分析.md",
+    "Vue/vue3/vue的组件和实例化模式设计思想.md",
+    "Vue/vue3/Vue的插槽和原理.md",
+    "Vue/vue3/vue的tree-shaking算法.md",
+    "Vue/vue3/Vue生命周期.md",
+    "Vue/vue3/Vue父子组件生命周期.md",
+    "Vue/vue3/vue源码解读-通用工具函数.md",
+    "Vue/vue3/vue源码解读笔记共享工具库.md",
+    "Vue/vue3/Vue数据双向绑定.md",
+    "Vue/vue3/Vue常用性能优化.md",
+    "Vue/vue3/Vue学习笔记.md",
+    "Vue/vue3/Vue事件绑定原理.md",
+    "Vue/vue3/Vue为何采用异步渲染.md",
+    "Vue/vue3/Vue中虚拟DOM的理解.md",
+    "Vue/vue3/Vue中组件间通信的方式.md",
+    "Vue/vue3/Vue中的三种Watcher.md",
+    "Vue/vue3/Vue中数组变动监听.md",
+    "Vue/vue3/Vue中refs的理解.md",
+    "Vue/vue3/Vue中nextTick的理解.md",
+    "Vue/vue3/Vue中key的作用.md",
+    "Vue/vue3",
     "Pasted image 20261026151003.png",
     "architecture_dark.svg",
-    "components/探究交互与样式分离的无头组件库HeadlessUI.md",
-    "system/windows/DKOM开发.md",
-    "architecture/初识CleanArchitecture架构项目.md",
-    "graphy/3d point and solve pipeline.md",
-    "graphy/视觉.md",
-    "browser/webkit与重绘重排.md",
     "architecture/未命名",
-    "architecture/kiriyama_canvas的架构设计思考.md",
-    "architecture/Cloudflare Workers.md",
-    "architecture/oauth和oidc的关系和讲解.md",
-    "network/RestfulAPI和GraphQL.md",
     "未命名.canvas",
-    "css/css上下文.md",
-    "css/css的优先级.md",
-    "css/css的BEM命名法.md",
-    "network/HTTP协议.md",
-    "javascript/js面试部分内容摘选.md",
-    "graphy/SDL3.md",
-    "csharp/CSharp的多线程.md",
-    "csharp/WPF/基于PropertyChangedTrigger (属性变更触发器)驱动的显式动画.md",
-    "csharp/WPF/依赖属性和附加属性.md",
     "system/windows",
     "system",
     "graphy",
@@ -286,7 +287,6 @@
     "browser",
     "architecture",
     "javascript",
-    "platform",
-    "rambling"
+    "platform"
   ]
 }

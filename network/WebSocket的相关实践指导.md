@@ -409,10 +409,6 @@ builder.Services.AddSignalR()
 
 **它换掉的是 `HubLifetimeManager` 这个抽象的实现**（`DefaultHubLifetimeManager` 内存版 → `RedisHubLifetimeManager`），而不是让你改业务代码。这个抽象是全篇的关键：所有"谁来记住谁在哪"的逻辑都被它收口了。
 
-
-
-
-
 ## Vueuse实践
 
 VueUse 是一套基于 **Composition API** 的 Vue 工具函数集合，`@vueuse/core` 是它的核心包，提供了大量开箱即用的组合式函数。具有纯函数式、响应式、SSR友好、类型完整、体积小等优点。覆盖了状态、元素、浏览器、传感器、网络、时间、工具等方面。

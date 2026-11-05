@@ -68,7 +68,6 @@ server.listen(3000, () => {
 
 在vue/react等框架中，首先通过 npm 安装 `socket.io-client`，然后在组件中引入并使用。关键是在组件的**生命周期钩子**中建立连接，并在**组件销毁前断开连接**，以避免内存泄漏。
 
-
 ```ts
 // Vue 3 示例 (Composition API)
 import { onMounted, onUnmounted } from 'vue';
