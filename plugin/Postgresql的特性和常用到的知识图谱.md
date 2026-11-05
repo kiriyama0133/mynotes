@@ -76,13 +76,41 @@ UPDATE users SET balance = balance - 100, version = version + 1 WHERE id = 1 AND
 
 在我们的Genocs的DDD架构项目里来说，CQRS已经完成的差不多了，CQRS天然就和主从分离非常的契合。我们在appsetting.json里也就是定义读和写两个配置。在写侧：注册 `Web3dContext` 时，读取 `MasterDb`。从侧：写一个 Dapper 的连接工厂，强制读取 `ReplicaDb`。
 
-## 排他锁
+### 排他锁
 
 排他锁是pg里最严格的锁，这个锁是加在行上的，当你对一行数据加上X锁之后，会挡死其他事务的UPDATE、DELETE，**想用 `SELECT ... FOR UPDATE` 或 `FOR SHARE` 查这行**：阻塞。
 
 但是通过刚才的mvcc机制我们知道，排他锁不会阻塞普通的`SELECT` 查询。因为普通 `SELECT` 走的是 MVCC 快照。你加 X 锁修改了数据（生成了新版本），普通 `SELECT` 查不到你未提交的新版本，它会去读那个旧的物理版本。所以，**写（加 X 锁）和普通读，在 PG 里依然是互不干扰的。**
 
 到这里，MVCC、主从分离、S 锁、X 锁、乐观/悲观锁，这一条从数据库底层到应用架构的完整知识链路就有了。
+
+Outbox的核心步骤里，X锁也是参与进来了的，比如一个场景：你要扣减库存和发送通知，发送通知算是outbox事件的本地事务，排他锁会隐式介入：
+
+```sql
+BEGIN;
+
+-- 1. 更新业务表（PG 底层自动给这行加 X 锁，防并发扣减超卖）
+UPDATE Inventory SET stock = stock - 1 WHERE id = 100;
+
+-- 2. 写入 Outbox 表（插入新行，不涉及原有行的锁冲突）
+INSERT INTO outbox_messages (event_type, payload) VALUES ('StockDeducted', '{...}');
+
+COMMIT; -- 事务提交，X 锁释放
+```
+
+**在这里，X 锁的作用是：** 确保 `UPDATE` 那一步是线程安全的，防止两个请求同时把库存改成负数。**但它并不能替代 Outbox 的作用**，就算没有 Outbox，更新库存依然会有 X 锁。Outbox的机制最巧妙的是worker把消息安全地拿过来消费，如果 3 个 Worker 同时去扫 `outbox_messages` 表，怎么保证同一条消息不被发 3 次？
+
+这就是我们上一轮讲的 **`FOR UPDATE SKIP LOCKED`**：
+
+```sql
+SELECT * FROM outbox_messages 
+WHERE status = 'Pending' 
+LIMIT 10 
+FOR UPDATE SKIP LOCKED;
+```
+
+worker A用FOR UPDATE用X锁锁住前10条消息，B来扫的时候发现前10条被锁，它会**直接跳过**（`SKIP LOCKED`），去锁第 11-20 条，这仅仅是 PostgreSQL 提供的一种极其高效的**任务分发机制**。
+
 
 继续更新...
 

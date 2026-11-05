@@ -944,7 +944,7 @@ MassTransit 会在数据库里生成三张协同工作的表，其中最核心�
 • OutboxState（发信锁与进度表）：记录当前发件箱有哪些批次正在被后台线程投递，防止多实例部署时两个 Pod抢着发同一批消息。
 • InboxState（收件箱幂等表）：位于消费者端，记录已经处理过的消息 ID，防止下游因网络原因收到重复消息。
 
-为什么本地 ACID 事务能让它们“要么同时成功，要么同时回滚”？这是由关系型数据库（如 SQL Server）底层的“预写日志机制（WAL - Write-Ahead Logging）”所决定的：
+为什么本地 ACID 事务能让它们“要么同时成功，要么同时回滚”？这是由关系型数据库（如 SQL Server）底层的“预写日志机制”所决定的：
 
 
 ```sql
@@ -972,9 +972,4 @@ ROLLBACK TRANSACTION;
 
 底层回滚原理：
 
-
-表本身没有魔法，魔法来自于数据库的事务日志（Transaction Log）：
-
-在事务 COMMIT 之前，任何写入都不会真正固化，而是作为“未决变更”记录在数据库的日志缓冲区中。 一旦中途发生任何异常（比如保存 Credit 时外键约束失败，或者保存 OutboxMessage 时字段截断）：数据库引擎会立即启动 ROLLBACK（回滚），依靠日志里的反向操作（UNDO），把刚刚为 Credit 和 OutboxMessage分配的数据页物理还原！
-
-同一个连接（Connection）与事务通道（SqlTransaction）：因为 Credit 表和 OutboxMessage 表都在同一个数据库实例、同一个数据库连接、同一个 GenocsContext 下；所以 EF Core 可以理所当然地把它们包装在同一个 BEGIN TRANSACTION 作用域内。
+继续更新...
