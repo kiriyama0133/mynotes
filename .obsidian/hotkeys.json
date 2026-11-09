@@ -1,0 +1,11 @@
+{
+  "ezimage:upload-clipboard": [
+    {
+      "modifiers": [
+        "Alt",
+        "Mod"
+      ],
+      "key": "V"
+    }
+  ]
+}

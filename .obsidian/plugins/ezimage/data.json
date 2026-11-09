@@ -1,0 +1,22 @@
+{
+  "provider": "r2",
+  "r2": {
+    "accountId": "c5f6aa3ec849c3e80825f6413874e20b",
+    "accessKeyId": "72e91a9c844349827e34d70d1667ea7b",
+    "secretAccessKey": "d91900db9de55abe4ac06226e55c34a129deff27e01c96ebab76ba8eb8cdc49d",
+    "bucketName": "obsidian",
+    "publicUrl": "https://pub-dd8e151a60af44cfbe36beaaf0ad54e8.r2.dev"
+  },
+  "pathTemplate": "{yyyy}/{MM}/{timestamp}-{random}.{ext}",
+  "markdownImageTemplate": "![]({{url}})",
+  "compress": true,
+  "compressionExcludedExtensions": [
+    "gif"
+  ],
+  "maxWidth": 1920,
+  "quality": 85,
+  "maxFileSizeMB": 20,
+  "stripExif": true,
+  "localSaveByDefault": false,
+  "language": "auto"
+}
