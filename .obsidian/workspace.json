@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "system/windows/特定文件类型的右键菜单扩展.md",
+                "file": "cv/机械臂手眼标定法与抓夹物体.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "特定文件类型的右键菜单扩展"
+              "title": "机械臂手眼标定法与抓夹物体"
             }
           }
         ]
@@ -162,7 +162,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "system/windows/特定文件类型的右键菜单扩展.md",
+                "file": "cv/机械臂手眼标定法与抓夹物体.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -198,7 +198,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200
+    "width": 200,
+    "collapsed": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -221,9 +222,14 @@
   },
   "active": "9f44a3e373f077ea",
   "lastOpenFiles": [
+    "Excalidraw/Drawing 2026-11-10 20.50.40.excalidraw.md",
+    "cv/机械臂手眼标定法与抓夹物体.md",
+    "Excalidraw",
+    "plugin/YARP网关和反向代理库.md",
+    "cv",
+    "system/windows/特定文件类型的右键菜单扩展.md",
     "csharp/WPF/HandyControl/Themes.md",
     "csharp/WPF/HandyControl/开头.md",
-    "system/windows/特定文件类型的右键菜单扩展.md",
     "system/windows/services服务控制管理器.md",
     "Pasted image 20261109180731.png",
     "Pasted image 20261109180646.png",
@@ -250,9 +256,6 @@
     "csharp/WPF/程序集合并dll Costura-Fody 详解.md",
     "csharp/WPF/平台调用gdi32实现屏幕捕获等任务.md",
     "csharp/WPF/基于资源字典实现主题切换-AI文档.md",
-    "csharp/WPF/导航栏的指示器平滑移动.md",
-    "csharp/WPF/基于PropertyChangedTrigger (属性变更触发器)驱动的显式动画-AI文档.md",
-    "csharp/WPF/依赖属性和附加属性.md",
     "Vue/vue3",
     "Pasted image 20261026151003.png",
     "architecture_dark.svg",
@@ -263,8 +266,6 @@
     "graphy",
     "media",
     "browser",
-    "architecture",
-    "javascript",
-    "platform"
+    "architecture"
   ]
 }
