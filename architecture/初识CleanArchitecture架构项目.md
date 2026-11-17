@@ -86,40 +86,7 @@ DDD的基础模型包括实体、聚合根、通用拓展与类型定义、结�
 
 传统的架构中，持久层是直接把实体类与数据库表绑定，一个模型打到底，但在本项目中，持久化相关的职责被精细地切分在不同层级中：
 
-
-```mermaid
-flowchart TD
-        subgraph Domain["1. 领域层 (Domain)"]
-            IAccount["纯领域模型/接口<br/>(IAccount, Customer, Money)"]
-            IEntityFactory["领域工厂抽象<br/>(IEntityFactory)"]
-        end
-
-        subgraph Application["2. 应用层 (Application)"]
-            UseCase["业务用例 (Deposit, Register)"]
-            IRepo["仓储契约 (IAccountRepository)"]
-            IUoW["工作单元契约 (IUnitOfWork)"]
-        end
-
-        subgraph Infrastructure["3. 基础设施层 (Infrastructure.PersistenceLayer.SQLServer)"]
-            Context["EF Core 上下文 (GenocsContext)"]
-            PersistEntity["持久化专用实体 (Account 继承自 Domain.Account)"]
-            EntityFactory["实体工厂实现 (EntityFactory)"]
-            RepoImpl["仓储实现 (AccountRepository)"]
-            UoWImpl["工作单元实现 (UnitOfWork)"]
-            Migrations["数据库迁移 (Migrations)"]
-        end
-
-        UseCase --> IRepo
-        UseCase --> IUoW
-        UseCase --> IEntityFactory
-        RepoImpl -.->|实现| IRepo
-        UoWImpl -.->|实现| IUoW
-        EntityFactory -.->|实现| IEntityFactory
-        PersistEntity -.->|派生| IAccount
-        RepoImpl --> Context
-        UoWImpl --> Context
-```
-
+![](https://pub-dd8e151a60af44cfbe36beaaf0ad54e8.r2.dev/2026/11/1794489788406-fzegrasu.webp)
 
 ### 领域模型层
 
@@ -566,39 +533,7 @@ await _unitOfWork.SaveAsync(...);          // 3. 提交数据库事务
 
 那么怎么避免这种情况，那么应该使用**事务性发件箱模式**
 
-
-```mermaid
-flowchart TD
-    subgraph App["应用层 / UseCase"]
-        Business["1. 业务逻辑 (如存款)"]
-        CreateOutbox["2. 创建待发事件消息"]
-    end
-
-    subgraph Database["同一个 SQL Server 数据库事务"]
-        AccountTable[("Account / Credit 表")]
-        OutboxTable[("OutboxMessages 表 (发件箱)")]
-    end
-
-    subgraph BackgroundWorker["后台发布进程 (Outbox Processor)"]
-        Poller["定期拉取未发送消息 / CDC"]
-        MarkSent["标记消息为已发送"]
-    end
-
-    subgraph Broker["消息代理 (RabbitMQ)"]
-        RabbitMQ["RabbitMQ 交换机/队列"]
-    end
-
-    Business -->|更新业务数据| AccountTable
-    CreateOutbox -->|插入待发消息| OutboxTable
-
-    %% 这里加上了双引号，修复了解析错误
-    AccountTable -.->|"【同一个 SaveAsync() 本地事务】<br/>要么同时成功，要么同时回滚！"| OutboxTable
-
-    Poller -->|读取未发送消息| OutboxTable
-    Poller -->|投递事件| RabbitMQ
-    RabbitMQ -->|ACK 确认| MarkSent
-    MarkSent -->|更新状态为 Processed| OutboxTable
-```
+![](https://pub-dd8e151a60af44cfbe36beaaf0ad54e8.r2.dev/2026/11/1794489749259-ot45q776.webp)
 
 这个在其他笔记里看，请查看[[MassTransitService收件箱模式]]。
 
@@ -991,93 +926,7 @@ await _serviceBus.PublishEventAsync(new DepositCompleted { ... }, cancellationTo
 
 同步通信支柱：弹性通信（Polly + Refit），当微服务不得不通过 HTTP 同步调用第三方外部服务（如银行网关、第三方订单服务）时，网络可能会抖动、超时、甚至下游直接宕机。项目使用了 Refit（声明式客户端） + Polly 来保证 HTTP 调用
 
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 900" width="100%" height="100%">
-  <defs>
-    <!-- 箭头标记 -->
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8892b0" />
-    </marker>
-
-    <!-- 卡片阴影效果 -->
-    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.3"/>
-    </filter>
-    
-    <!-- Polly 管道外框阴影 -->
-    <filter id="glow" x="-5%" y="-5%" width="110%" height="110%">
-      <feGaussianBlur stdDeviation="4" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over" />
-    </filter>
-
-    <!-- 背景网格 -->
-    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="1"/>
-    </pattern>
-  </defs>
-
-  <!-- 背景 -->
-  <rect width="100%" height="100%" fill="#0f172a" />
-  <rect width="100%" height="100%" fill="url(#grid)" />
-
-  <!-- 1. 业务代码发起请求 -->
-  <g transform="translate(200, 50)">
-    <rect width="400" height="100" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="2" filter="url(#shadow)"/>
-    <text x="200" y="40" fill="#e2e8f0" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">业务代码发起 HTTP 请求</text>
-    <text x="200" y="70" fill="#94a3b8" font-family="monospace" font-size="16" text-anchor="middle">(IOrderApi.GetOrdersAsync)</text>
-  </g>
-
-  <!-- 箭头 1 -->
-  <line x1="400" y1="150" x2="400" y2="190" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
-
-  <!-- 2. Bulkhead 舱壁隔离 -->
-  <g transform="translate(200, 200)">
-    <rect width="400" height="100" rx="12" fill="#1e293b" stroke="#f59e0b" stroke-width="2" filter="url(#shadow)"/>
-    <text x="200" y="40" fill="#fbbf24" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">1. Bulkhead 舱壁隔离</text>
-    <text x="200" y="70" fill="#94a3b8" font-family="sans-serif" font-size="16" text-anchor="middle">(限流隔离，防止打爆本服务线程池)</text>
-  </g>
-
-  <!-- 箭头 2 -->
-  <line x1="400" y1="300" x2="400" y2="330" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
-
-  <!-- 3. Polly 弹性策略护甲管道 (外框) -->
-  <g transform="translate(150, 340)">
-    <!-- Polly 外框背景与边框 -->
-    <rect width="500" height="310" rx="16" fill="#172033" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="8,4" opacity="0.8" filter="url(#glow)"/>
-    <rect width="150" height="30" x="25" y="-15" fill="#8b5cf6" rx="15" />
-    <text x="100" y="5" fill="#ffffff" font-family="sans-serif" font-size="14" font-weight="bold" text-anchor="middle">Polly 护甲管道</text>
-
-    <!-- 管道内部箭头 -->
-    <line x1="250" y1="30" x2="250" y2="60" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
-
-    <!-- 3.1 AdvancedCircuitBreaker -->
-    <g transform="translate(50, 70)">
-      <rect width="400" height="90" rx="8" fill="#2a1b2d" stroke="#ef4444" stroke-width="2" filter="url(#shadow)"/>
-      <text x="200" y="35" fill="#fca5a5" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle">2. AdvancedCircuitBreaker 熔断器</text>
-      <text x="200" y="60" fill="#94a3b8" font-family="sans-serif" font-size="14" text-anchor="middle">(下游挂了立即熔断跳闸，快速失败)</text>
-    </g>
-
-    <!-- 管道内部箭头 -->
-    <line x1="250" y1="160" x2="250" y2="190" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
-
-    <!-- 3.2 WaitAndRetry -->
-    <g transform="translate(50, 200)">
-      <rect width="400" height="90" rx="8" fill="#142d25" stroke="#10b981" stroke-width="2" filter="url(#shadow)"/>
-      <text x="200" y="35" fill="#6ee7b7" font-family="sans-serif" font-size="18" font-weight="bold" text-anchor="middle">3. WaitAndRetry 指数退避重试</text>
-      <text x="200" y="60" fill="#94a3b8" font-family="sans-serif" font-size="14" text-anchor="middle">(网络闪断自动 1s, 2s, 4s 退避重试)</text>
-    </g>
-  </g>
-
-  <!-- 箭头 3 -->
-  <line x1="400" y1="650" x2="400" y2="690" stroke="#8892b0" stroke-width="2" marker-end="url(#arrow)" />
-
-  <!-- 4. 下游外部微服务 -->
-  <g transform="translate(200, 700)">
-    <rect width="400" height="100" rx="12" fill="#1e293b" stroke="#ec4899" stroke-width="2" filter="url(#shadow)"/>
-    <text x="200" y="40" fill="#fbcfe8" font-family="sans-serif" font-size="20" font-weight="bold" text-anchor="middle">下游外部微服务</text>
-    <text x="200" y="70" fill="#94a3b8" font-family="monospace" font-size="16" text-anchor="middle">(External Order WebService)</text>
-  </g>
-
-</svg>
+![](https://pub-dd8e151a60af44cfbe36beaaf0ad54e8.r2.dev/2026/11/1794489703830-ox3p23mc.webp)
 
 这里用了声明式HTTP客户端Refit，传统写法需要 new HttpClient、手动拼接 URL、手动序列化 JSON、判断 StatusCode，代码极其冗长。而在本项目中，查看 IOrderApi.cs：
 
@@ -1105,7 +954,7 @@ await _serviceBus.PublishEventAsync(new DepositCompleted { ... }, cancellationTo
 
 ## 健康检查与监控（HealthChecks & Diagnostics）
 
-• AspNetCore.HealthChecks.RabbitMQ (9.0.0) & AspNetCore.HealthChecks.Uris (9.0.0)：健康检查端点探针。
+			• AspNetCore.Hea lthChecks.RabbitMQ (9.0.0) & AspNetCore.HealthChecks.Uris (9.0.0)：健康检查端点探针。
 • Microsoft.ApplicationInsights.Kubernetes (8.0.1)：K8s 环境下的 Application Insights 遥测强化。
 
 ## 全局代码质量与测试（Build & Tests）
