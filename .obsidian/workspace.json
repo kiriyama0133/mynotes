@@ -27,12 +27,26 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "cuRobo机器人gpu加速运动学生成.md",
+                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
               "title": "cuRobo机器人gpu加速运动学生成"
+            }
+          },
+          {
+            "id": "af77c20ce6156336",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "3D视觉中常见的模型和处理方式.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "3D视觉中常见的模型和处理方式"
             }
           },
           {
@@ -50,7 +64,7 @@
             }
           }
         ],
-        "currentTab": 1
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -247,14 +261,15 @@
       "obsidian-excalidraw-plugin:新建绘图文件": false
     }
   },
-  "active": "2589b2c674f506ec",
+  "active": "af77c20ce6156336",
   "lastOpenFiles": [
+    "architecture/cuRobo机器人gpu加速运动学生成.md",
+    "cv/plc/常见modbus相关设备和协议.md",
+    "3D视觉中常见的模型和处理方式.md",
     "graphy/线代和微积分数学工具.md",
-    "cuRobo机器人gpu加速运动学生成.md",
     "graphy/SDL3.md",
     "graphy/GLFW窗口.md",
     "architecture/工业配套软件理念与开发.md",
-    "cv/plc/常见modbus相关设备和协议.md",
     "cmu-mit/csapp/machine level programing.md",
     "cv/plc",
     "cmu-mit/15-462图形学",
@@ -287,7 +302,6 @@
     "system/windows/会话空间.md",
     "system/windows/wininit初始化进程.md",
     "system/windows/smss会话管理器.md",
-    "browser/webkit与重绘重排.md",
     "Pasted image 20261105223701.png",
     "Vue/vue3",
     "Pasted image 20261026151003.png",
