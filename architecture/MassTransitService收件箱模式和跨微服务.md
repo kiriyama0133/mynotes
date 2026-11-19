@@ -762,7 +762,7 @@ services.AddMassTransitWithOutbox(builder.Configuration);
 
 ### 内存追踪变更器
 
- 如果没有 ChangeTracker（内存变更追踪器），上述的 Outbox 机制、工作单元以及整洁架构里的事务一致性，根本无法成立。这个也是ef core的关键部分，下面我们拆解一下它是如何工作的：
+ 如果没有 ChangeTracker，上述的 Outbox 机制、工作单元以及整洁架构里的事务一致性，根本无法成立。这个也是ef core的关键部分，下面我们拆解一下它是如何工作的：
 
 ef core内部，每一个被管理的对象，都会被包装为一个EntityEntry，ChangeTracker会为其维护一个状态叫做EntiryState
 
@@ -778,7 +778,7 @@ EntityState 的 5 种状态
 
 他如果知道你改了什么：
 
-当你从数据库查出一个实体时，ChangeTracker 会在内存中存放一个快照（Original Values 快照）。当调用 SaveChangesAsync() 时，它会拿当前对象的属性和底片进行比对（Dirty Checking脏检查），发现哪个属性变了，就精准生成对应字段的 UPDATE 语句。
+当你从数据库查出一个实体时，ChangeTracker 会在内存中存放一个快照。当调用 SaveChangesAsync() 时，它会拿当前对象的属性和底片进行比对（Dirty Checking脏检查），发现哪个属性变了，就精准生成对应字段的 UPDATE 语句。
 
 
 我们来还原在用例 Deposit.cs 执行的那几毫秒内，ChangeTracker 内存里的真实演变：
@@ -958,4 +958,270 @@ ROLLBACK TRANSACTION;
 
 底层回滚原理：
 
+## 编排式saga
+
+既然我们使用MassTransit，那么我们可以使用它内置的Transactional Outbox/inbox，不需要引入额外的第三方分布式事务中间件，masstransit原生内置了一个叫做MassTransitStateMachine的东西，它是一个编排式saga，配合着routing slip路由单，就是最成熟的跨微服务回滚调度器。
+
+微服务中，回滚不是pg靠两阶段提交强锁所有数据库，而是采用saga补偿事务模式，正向一步步调各个微服务执行本地事务，一旦某一步失败了，中央调度器就会按照逆序发送补偿命令，比如说扣减库存的逆向就是释放预占库存，扣款的逆向就是原路退款，这样就可以实现最终一致性了。
+
+我们之前使用了Inbox/outbox解决了本地的efcore写库+发消息的原子性，而 **Automatonymous 状态机（`MassTransitStateMachine<TInstance>`）** 就是全局调度多个微服务的中央调度器。
+
+调度器需要自己维护一张状态表，通常用ef core持久化到pg或者存于redis，用`CorrelationId` 作为全局事务 ID，假设有一个下单的链路涉及到了订单->库存->支付。
+
+那么收到了`OrderSubmitted` 事件之后状态机会切换到`ReservingInventory`，发送 `ReserveInventory` 命令。
+
+收到 `InventoryReserved` 事件，状态机记录库存单号，切为 `ProcessingPayment`，发送 `ChargePayment` 命令。
+
+如果收到支付服务发回的 `PaymentFailed`（或触发了状态机内置的 `Schedule` 超时定时器），状态机立刻识别当前已完成了库存扣减，自动发出补偿命令 `ReleaseInventory` 并通知订单服务 `MarkOrderFailed`，将状态推进至 `RolledBack`。
+
+这样就可以复用我们配置好的efcore outbox + inbox，状态机每次切换状态并发出下一步命令的时候同样走本地数据库事务+outbox投递，下游微服务消费命令的时候走inbox幂等去重，防止回滚消息丢了或者重复退款的事情发生。
+
+那么状态机有哪些状态，masstransit值内置了头尾两个生命周期锚点状态，其余所有业务状态均由你按照流程自由声明。初始是Initial，saga实例刚被首个事件激活创建时所处的起点，通过`Initially(When(OrderSubmitted)...)` 捕获入口事件并跳出 `Initial`。
+
+调用 `.Finalize()` 后进入的终点，代表整个分布式事务生命周期彻底结束。如果配置了 `SetCompletedWhenFinalized()`，进入 `Final` 的那一刻，EF Core 仓储会自动执行 `DELETE` 把这行已完结的状态数据从活跃表中物理删除
+
+我们可以自定义业务状态，比如说带回滚的订单到库存到支付这条链路为例，状态机类里声明`public State ... { get; private set; }` 属性即可。正向态中，`ReservingInventory`（等待锁库存） → `ProcessingPayment`（库存已锁，等待扣款） → `Completed`（全部成功）；逆向中：假如在 `ProcessingPayment` 收到 `PaymentFailed`，不能直接切到结束，而应切入 **`CompensatingInventory`（回滚库存中）** 并发送 `ReleaseInventory` 命令；等收到库存服务确认释放成功的 `InventoryReleased` 事件后，再安全切入 **`RolledBack`（已彻底回滚）** 或 `Final`。这样即使库存回滚中途失败，状态机也清楚知道还卡在回滚阶段，方便重试或告警介入。
+
+### 复用efcore的本地事务
+
+masstransit可以配合efcore使用，在消费单条消息的DI Scope生命周期里，InboxOutbox中间件、sagaRepository和outbox消息发送器
+
 继续更新...
+
+### 调度器的边界条件
+
+saga调度需要关注幂等性和空回滚、防悬挂这几个情况出现。
+
+由于网络抖动会导致补充命令重发，这个时候库存服务的`ReleaseInventory` 必须能承受重复调用而不把库存加多，masstransit inbox可以帮我们挡掉大部分的重复消费，但是业务状态字段依然要状态流转校验，这个就叫做幂等性。
+
+正向的`ReserveInventory` 因为网络延迟还没到库存服务，调度器就因为超时发出了回滚命令 `ReleaseInventory`。此时库存服务查不到扣减记录，必须优雅返回成功并记录一条“已作废”，而不是抛 404 异常卡死回滚流。
+
+空回滚执行了之后如果这个时候正向`ReserveInventory` 终于送达了，那么我们就应该让正向请求查查有没有已回滚，有的话直接拒接执行。
+
+### 路由单工具
+
+masstransit有一个回滚的工具，就是我们刚才提到的routing slip，也叫做路由单。如果我们的跨服务调用链路是动态组装的，比如不同商品类型的审核与履约步骤不同。那么写死一个巨大的状态机就比较僵硬，泛用性不足，MassTransit 还提供了 **Courier** 。
+
+我们只需要给每个微服务实现统一的`IActivity<TArguments, TLog>` 接口，强制你成对编写两个方法：**正向执行的 `Execute()`** 和 **逆向回滚的 `Compensate()`**，`Execute()` 成功后，可以把回滚所需的快照凭证（如预扣流水号）写入 `TLog`。一旦后续任意第 N 个节点的 `Execute()` 抛异常返回 `Faulted`，MassTransit 会像剥洋葱一样，沿着路由单从第 N-1 个节点往回逐个自动调用 `Compensate(TLog)`，连中央状态机的 `if-else` 分支都不用手写。
+
+但是在实际的生产项目里，似乎状态机saga的使用广泛程度要远高于路由单模式，占到了90%的情况，有些系统里面也会混用，比如状态机作为总调度，路由单当特定的执行器的上下级关系。
+
+因为masstransitStateMachine每笔业务流转在pg里都有真实的数据库记录，它天生擅长处理异步挂起等待任务、复杂条件分支和多事件并行汇聚。做运维排障的时候，直接SELECT 状态表就可以看清全网有多少笔订单卡在什么环节，非常方便。
+
+路由单是去中心化消息包带状态，因此一旦某一步报错，就顺着消息里记录的历史路径倒着调 `Compensate()`。它只适合**纯线性、短平快、一气呵成**的批处理流水线（比如：校验参数 → 扣配额 → 写对象存储 → 发通知），无法优雅地停在半路等一个外部第三方异步回调，且出问题时很难从数据库全局统计当前在途任务。
+
+如果状态机的一个阶段需要动态串联四个微服务做资源初始化，那么通常是由`MassTransitStateMachine` 组装并发射一张 Routing Slip，自己切入`ExecutingSlip` 状态等待；等路由单全部跑完或自动回滚完，状态机收到 `RoutingSlipCompleted` 或 `RoutingSlipFaulted` 事件后再继续推进主流程。
+
+### 其他跨服务调度框架
+
+Temporal.io是现代化云原生持久化的框架，Temporal 允许你直接用普通的 C# `async/await` 和 `try / catch` 顺序写代码——`catch` 块里直接按栈逆序写补偿逻辑即可。哪怕调度器容器在执行到第 3 行时断电重启，它也能通过事件溯源重放历史，精准恢复到断点继续跑或继续回滚。
+
+
+## 实践
+
+比如我们来定义个状态机和一个实例，普遍的开发也是这样做的：
+
+这个是状态机的实例数据，它非常重要，因为它负责保存一个业务流程在执行过程中的状态和上下文数据。
+
+```cs
+public class NewsletterEmailSagaData : SagaStateMachineInstance 
+{
+    public Guid CorrelationId { get; set; }
+    public string CurrentState { get; set; } = string.Empty;
+    public Guid ProductId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool NotifyProductSend { get; set; }
+}
+```
+
+里面最重要的是`CorrelationId`：标识这是哪个 Saga 实例还有`CurrentState`：标识这个业务流程执行到了哪里。其他的都是我们自己可以定义的属性。
+
+saga实例和事件的关系是，如果收到了事件，masstransit就可以创建一个saga实例，我这里写了两个事件，一个是产品创建成功的事件，一个是邮件发送成功的事件：
+
+```cs
+public record EmailSent(
+    Guid Id,
+    string Name,
+    string Description
+);
+
+public record ProductCreated(
+    Guid ProductId,
+    string Name,
+    string Description,
+    DateTime CreatedAt
+);
+```
+
+masstransit会根据事件里的关联ID来找到这个Saga实例，然后修改它的数据，最终状态可能变成completed。
+
+我们这里是一个产品对应一个Newsletter通知流程，那么可以让它们使用相同的Guid：
+
+```cs
+Event(() => ProductCreated, e =>
+    e.CorrelateById(m => m.Message.ProductId));
+```
+
+这样新建 Saga 时，`CorrelationId` 就使用 `ProductId`，后续 `EmailSent` 也必须携带相同的产品 ID：
+
+```cs
+Event(() => EmailSent, e =>
+    e.CorrelateById(m => m.Message.ProductId));
+```
+
+如果未来一个产品可能触发多个独立的通知流程，那么就应该考虑使用独立的 `CorrelationId`，而不是直接使用 `ProductId`。
+
+
+```cs
+public class NewsletterNotifySaga : MassTransitStateMachine<NewsletterEmailSagaData>
+{
+    public required State Notifying { get; set; }
+    public Event<ProductCreated> ProductCreated { get; set; }
+    public Event<EmailSent> EmailSent { get; set; }
+
+    public NewsletterNotifySaga()
+    {
+        InstanceState(x => x.CurrentState);
+        Event(() => ProductCreated, e =>
+            e.CorrelateById(m => m.Message.ProductId));
+        Event(() => EmailSent, e =>
+            e.CorrelateById(m => m.Message.ProductId));
+    }
+}
+```
+
+
+Event用于定义状态机能够接受哪些事件， `CorrelateById()`：定义如何根据事件找到对应的 Saga 实例，`Initially()`、`During()`：定义收到事件后执行什么操作，以及如何转换状态。
+
+到这一步我们就算配置好了，我们会从初始状态开始，通过Initially方法来设置，When方法是这个状态下发生什么事件就会去执行什么，During也是，处于什么状态下，如果发生了什么事件，就去处理什么，完整代码如下：
+
+```cs
+public class NewsletterNotifySaga : MassTransitStateMachine<NewsletterEmailSagaData>
+{
+    public required State SendingEmailState { get; set; }
+    public required State EmailSentState { get; set; }
+    public Event<ProductCreated> ProductCreated { get; set; }
+    public Event<EmailSent> EmailSent { get; set; }
+
+    public NewsletterNotifySaga()
+    {
+        InstanceState(x => x.CurrentState);
+        Event(() => ProductCreated, e =>
+            e.CorrelateById(m => m.Message.ProductId));
+        Event(() => EmailSent, e =>
+            e.CorrelateById(m => m.Message.ProductId));
+        Initially(
+            When(ProductCreated)
+            .Then(context =>
+            {
+                context.Saga.ProductId = context.Message.ProductId;
+                context.Saga.Name = context.Message.Name;
+                context.Saga.Description = context.Message.Description;
+            })
+            .TransitionTo(SendingEmailState)
+            .Publish(context =>
+                new CreateEmail(context.Message.ProductId, context.Message.Name, context.Message.Description)
+            ));
+
+        During(SendingEmailState, When(EmailSent)
+            .Then(context =>
+                context.Saga.NotifyProductSend = true)
+            .TransitionTo(EmailSentState)
+            );
+    }
+}
+
+```
+
+我们使用Publish命令发布事件，通知订阅者某件事情已经发生了，如果你要发送的是命令，要求某个Handler执行操作的话，就需要使用Send。
+
+这样我们就可以将事件推送到rabbitmq中了，不过当你需要进程内事件的时候呢，因为这些事件都在mq里传播，因此如果你又要使用进程内通信的话就不方便了，我们需要配置mediator，然后在里面配置saga状态机，这样saga既可以发布mq的事件，又可以发布进程内的事件了。
+
+```cs
+public static class MassTransitExtension
+{
+    static public IServiceCollection AddMassTransitService(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddMassTransit(x =>
+        {
+            //x.AddSagaStateMachine<NewsletterNotifySaga, NewsletterEmailSagaData>()
+            //    .EntityFrameworkRepository(r =>
+            //    {
+            //        r.ExistingDbContext<AppDbContext>();
+            //        r.UsePostgres();
+            //    });
+            x.UsingRabbitMq((context, cfg) =>
+            {
+                var connectionString =
+                    configuration.GetConnectionString("messaging");
+
+                if (string.IsNullOrWhiteSpace(connectionString))
+                {
+                    throw new InvalidOperationException(
+                        $"RabbitMQ connection string is missing. " +
+                        $"Environment variable exists: " +
+                        $"{!string.IsNullOrWhiteSpace(
+                            Environment.GetEnvironmentVariable("ConnectionStrings__messaging"))}");
+                }
+
+                cfg.Host(new Uri(connectionString));
+                cfg.ConfigureEndpoints(context);
+            });
+        });
+
+        services.AddMediator(cfg =>
+        {
+            cfg.AddConsumer<NotifyProductCreatedHandler>();
+            cfg.AddConsumer<CreateProductHandler>();
+            cfg.AddSagaStateMachine<NewsletterNotifySaga, NewsletterEmailSagaData>()
+                .EntityFrameworkRepository(r =>
+                {
+                    r.ExistingDbContext<AppDbContext>();
+                    r.UsePostgres();
+                }
+                );
+        });
+        return services;
+    }
+}
+
+```
+
+
+这个Mediator的使用体验我个人认为有点不如MediatR方便，MediatR会通过程序集自己去扫描handler并注册，这里我们还要手动去注册handler，当然我们可以自己去手动实现一个扫描程序集，然后注册进去的方法。
+
+基于此改进，我们可以写一个反射查找，然后注册进去：
+
+```cs
+    private static bool IsConsumerInterface(Type interfaceType)
+    {
+        return interfaceType.IsGenericType &&
+               interfaceType.GetGenericTypeDefinition() == typeof(IConsumer<>);
+    }
+
+    public static void AddMediatorConsumers(this IMediatorRegistrationConfigurator configurator, params Assembly[] assemblies)
+    {
+        var consumerType = assemblies
+            .SelectMany(assemblies => assemblies.GetTypes())
+            .Where(type => type is { IsClass: true, IsAbstract: false }
+                && type.GetInterfaces().Any(IsConsumerInterface)
+            )
+            .Distinct()
+            .ToArray();
+        foreach (var consumer in consumerType)
+        {
+            configurator.AddConsumer(consumer);
+        }
+    }
+```
+
+调用的时候我们直接把本类所在的程序集传入进去就行了，这样配置好了以后你就可以在saga里发布进程内消息了，不需要自己注入`IScopedMediator`，我们如果要在saga向外部微服务发送消息，可以注入rabbitmq bus对应的发布接口。
+
+
+## 推荐书籍：
+
+《微服务架构设计模式》（Chris Richardson 著）第 4 章《使用 Saga 管理事务》**：全书最精华的一章，把“协同式 vs 编排式 Saga”、“语义锁”以及应对并发更新异常的对策讲得极其透彻。
+
+
+在 YouTube 搜 `MassTransit Saga State Machine` 或直接拉取 GitHub 上的 `MassTransit/Sample-Twitch` / `Sample-Library`，里面完整演示了 `MassTransitStateMachine` + `EntityFrameworkRepository` + `Transactional Outbox` + `Courier Routing Slip`

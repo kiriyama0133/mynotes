@@ -535,7 +535,7 @@ await _unitOfWork.SaveAsync(...);          // 3. 提交数据库事务
 
 ![](https://pub-dd8e151a60af44cfbe36beaaf0ad54e8.r2.dev/2026/11/1794489749259-ot45q776.webp)
 
-这个在其他笔记里看，请查看[[MassTransitService收件箱模式]]。
+这个在其他笔记里看，请查看[[MassTransitService收件箱模式和跨微服务]]。
 
 我们继续来扯读写分离。读写分离在实际软件工程中，通常分为两个阶段演进：
 
