@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "architecture/MassTransitService收件箱模式和跨微服务.md",
+                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "MassTransitService收件箱模式和跨微服务"
+              "title": "cuRobo机器人gpu加速运动学生成"
             }
           },
           {
@@ -112,7 +112,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200
+    "width": 200,
+    "collapsed": true
   },
   "right": {
     "id": "e31930829edc548b",
@@ -128,7 +129,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "cmu-mit/csapp/machine level programing.md",
+                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
                 "collapseAll": true,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -139,20 +140,6 @@
               },
               "icon": "links-coming-in",
               "title": "反向链接"
-            }
-          },
-          {
-            "id": "e7d6bed2828330cd",
-            "type": "leaf",
-            "state": {
-              "type": "outgoing-link",
-              "state": {
-                "file": "architecture/服务器驱动UI的SDUI范式讲解之Flet.md",
-                "linksCollapsed": false,
-                "unlinkedCollapsed": true
-              },
-              "icon": "links-going-out",
-              "title": "出链"
             }
           },
           {
@@ -190,7 +177,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "PROJECT_STRUCTURE.md",
+                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -220,13 +207,27 @@
               "icon": "lucide-ghost",
               "title": "calendar"
             }
+          },
+          {
+            "id": "e7d6bed2828330cd",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "出链"
+            }
           }
-        ]
+        ],
+        "currentTab": 3
       }
     ],
     "direction": "horizontal",
-    "width": 200,
-    "collapsed": true
+    "width": 200
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -246,12 +247,12 @@
       "obsidian-excalidraw-plugin:新建绘图文件": false
     }
   },
-  "active": "af77c20ce6156336",
+  "active": "d490da7f72c544ab",
   "lastOpenFiles": [
-    "architecture/数据仓库大数据之处理公司报表问题.md",
+    "cv/3D视觉中常见的模型和处理方式.md",
     "architecture/MassTransitService收件箱模式和跨微服务.md",
+    "architecture/数据仓库大数据之处理公司报表问题.md",
     "architecture/cuRobo机器人gpu加速运动学生成.md",
-    "3D视觉中常见的模型和处理方式.md",
     "cv/plc/常见modbus相关设备和协议.md",
     "graphy/线代和微积分数学工具.md",
     "graphy/SDL3.md",
