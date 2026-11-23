@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
+                "file": "web-client/React/react-i18next管理国际化.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "cuRobo机器人gpu加速运动学生成"
+              "title": "react-i18next管理国际化"
             }
           },
           {
@@ -112,8 +112,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200,
-    "collapsed": true
+    "width": 200
   },
   "right": {
     "id": "e31930829edc548b",
@@ -129,7 +128,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
+                "file": "web-client/React/react-i18next管理国际化.md",
                 "collapseAll": true,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -177,7 +176,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
+                "file": "web-client/React/react-i18next管理国际化.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -214,7 +213,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "architecture/cuRobo机器人gpu加速运动学生成.md",
+                "file": "web-client/React/react-i18next管理国际化.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -227,7 +226,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200
+    "width": 200,
+    "collapsed": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -247,12 +247,18 @@
       "obsidian-excalidraw-plugin:新建绘图文件": false
     }
   },
-  "active": "d490da7f72c544ab",
+  "active": "af77c20ce6156336",
   "lastOpenFiles": [
+    "web-client/React/cva管理组件样式变体.md",
+    "web-client/React/react-i18next管理国际化.md",
+    "plugin/electron-store管理桌面应用持久化配置.md",
+    "web-client/React",
+    "web-client",
+    "plugin/dizzle决定ORM工具管理数据库结构.md",
+    "architecture/cuRobo机器人gpu加速运动学生成.md",
     "cv/3D视觉中常见的模型和处理方式.md",
     "architecture/MassTransitService收件箱模式和跨微服务.md",
     "architecture/数据仓库大数据之处理公司报表问题.md",
-    "architecture/cuRobo机器人gpu加速运动学生成.md",
     "cv/plc/常见modbus相关设备和协议.md",
     "graphy/线代和微积分数学工具.md",
     "graphy/SDL3.md",
@@ -279,22 +285,16 @@
     "system/windows/特定文件类型的右键菜单扩展.md",
     "csharp/WPF/HandyControl/Themes.md",
     "csharp/WPF/HandyControl/开头.md",
-    "system/windows/services服务控制管理器.md",
     "Pasted image 20261109180731.png",
     "Pasted image 20261109180646.png",
     "Pasted image 20261109180452.png",
-    "plugin/KeyCloak的客户端安全策略和部分业务.md",
     "Pasted image 20261109175946.png",
     "Pasted image 20261109175810.png",
-    "system/windows/csrss客户端与服务器运行时子系统.md",
-    "system/windows/会话空间.md",
     "Pasted image 20261105223701.png",
-    "Vue/vue3",
+    "web-client/Vue/vue3",
     "Pasted image 20261026151003.png",
     "architecture_dark.svg",
     "architecture/未命名",
-    "未命名.canvas",
-    "system/windows",
-    "system"
+    "未命名.canvas"
   ]
 }
