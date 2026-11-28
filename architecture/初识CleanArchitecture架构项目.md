@@ -957,6 +957,65 @@ await _serviceBus.PublishEventAsync(new DepositCompleted { ... }, cancellationTo
 			• AspNetCore.Hea lthChecks.RabbitMQ (9.0.0) & AspNetCore.HealthChecks.Uris (9.0.0)：健康检查端点探针。
 • Microsoft.ApplicationInsights.Kubernetes (8.0.1)：K8s 环境下的 Application Insights 遥测强化。
 
+## 收发箱模型
+
+假设我们要做这两件事：
+
+在 PostgreSQL 中插入 Customer 和 Account 记录，然后向 RabbitMQ 发送一条 RegistrationCompleted 跨服务事件。如果不用收发箱模式，直接“先写库，再发 MQ”或“先发 MQ，再写库”，会出现以下致命问题：
+
+要么数据库提交成功，但mq由于网络抖动发送失败了，数据库落库但是下游微服务收不到通知造成消息丢失。
+先发mq成功，但是数据库提交的时候报错回滚，微服务收到了一个不存在的业务事件，我们叫做幽灵事件。
+消费者处理完了业务并且发送下游消息，但是ACK给mq时网络断开，mq重新投递该消息导致消费者重复扣款或者重复发消息，造成非幂等重复执行。
+
+我们使用收发箱就是为了把发往mq的消息也当成普通数据行，和业务数据放在同一个PostgreSQL 本地数据库事务中一起COMMIT，再由后台线程异步搬运到 RabbitMQ。
+
+OutboxMessage是存放消息内容的地方，是生产者和消费者，存放真正发往mq的消息载荷payload。确保与业务数据同事务落库，发完就删。核心字段为：
+
+• SequenceNumber（自增主键）：严格保证同一个事务内多条消息的发送先后顺序。
+• MessageId / CorrelationId / ConversationId：消息追踪标识。
+• MessageType / DestinationAddress：消息类型与目标 RabbitMQ Exchange/Queue 地址。
+• Body / Headers：序列化后的 JSON 消息体和头部元数据。
+• OutboxId（可空）：关联到 OutboxState 表（由 WebApi 生产者直接产生的消息使用）。
+• InboxMessageId + InboxConsumerId（可空）：关联到 InboxState 表（由 Consumer
+消费消息时级联产生的下游消息使用）。
+
+OutboxState是收发箱的状态，是生产者，管理了并发锁与投递进度，之所以有这个是因为一个业务事务比如一次SaveChangeAsync可能会同时产生多条OutboxMessage，我们的服务在生产环境下可能还有多个Pod，它能够帮助我们：以一次数据库事务批次（OutboxId）为单位，管理后台投递线程的分布式行级锁和投递游标进度。
+
+核心字段：
+
+• OutboxId（主键）：代表一个发件箱事务批次。
+• LockId：当前正在处理该批次的后台实例锁标识。
+• Created：事务创建时间。
+• LastSequenceNumber：记录当前批次已经成功发往 RabbitMQ 的最后一条 OutboxMessage.
+SequenceNumber（支持断点续传）。
+• Delivered：当该批次下的所有 OutboxMessage 都成功发到 RabbitMQ 后，标记完成时间戳。
+
+日志里看到的 SQL：
+
+```sql
+SELECT *, xmin FROM "OutboxState" ORDER BY "Created" LIMIT 1 FOR UPDATE SKIP LOCKED
+```
+这就是后台投递服务利用 PostgreSQL 的 FOR UPDATE SKIP LOCKED 抢占未锁定批次的标准操作——多实例并发抢锁且互不阻塞，就这样协调多实例后台线程按序搬运消息到rabbitmq。
+
+InboxState是收件箱状态，它作为消费者的幂等表，管理消费去重和防重入。当mq吧详细推送给了worker或者其他服务的时候，服务会收到消息，先去 InboxState 表里尝试插入并加行锁，如果发现这消息InboxState 中已经存在且 Consumed 不为空，说明之前已经处理过业务逻辑了，直接跳过消费者的Consume() 方法，绝不重复执行业务代码。
+
+如果是首次消费，执行 Consumer.Consume() 中的数据库修改。如果消费者内部又调用了 context.Publish()发送下游事件，这些下游事件会作为 OutboxMessage（关联 InboxMessageId）与 InboxState.Consumed = NOW() 在同一个数据库事务中提交。
+
+投递下游消息并 ACK，事务提交后，把关联的下游 OutboxMessage 发往 RabbitMQ，更新 InboxState.Delivered = NOW()，最后才向 RabbitMQ发送 BasicAck。
+
+最后为了防止 InboxState 和 OutboxState 表无限膨胀，MassTransit 还有一个后台清理服务，定期删除早于保留期限且 DeliveredIS NOT NULL 的历史状态记录——这就是日志开头看到的另一条 SQL：
+
+```sql
+DELETE FROM "InboxState" AS i
+WHERE i."Id" IN (
+	SELECT i0."Id"
+	FROM "InboxState" AS i0
+	WHERE i0."Delivered" IS NOT NULL AND i0."Delivered" < @removeTimestamp
+	ORDER BY i0."Delivered"
+	LIMIT @p
+)
+```
+
 ## 全局代码质量与测试（Build & Tests）
 
 
